@@ -5,6 +5,7 @@ import ServiceManagement
 @main
 struct ClaudeUsageMenuBarApp: App {
     @State private var service = UsageService()
+    @State private var settings = AppSettings()
 
     init() {
         // Auto-register as login item so the app starts on boot
@@ -13,11 +14,12 @@ struct ClaudeUsageMenuBarApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            UsagePopoverView(service: service)
+            UsagePopoverView(service: service, settings: settings)
         } label: {
             Image(nsImage: MenuBarIconRenderer.renderFull(
                 remaining: service.menuBarRemaining,
-                resetTime: service.sessionWindow?.resetClockShort
+                resetTime: settings.showResetTime ? service.sessionWindow?.resetClockShort : nil,
+                showLogo: settings.showLogo
             ))
         }
         .menuBarExtraStyle(.window)
@@ -43,7 +45,7 @@ enum MenuBarIconRenderer {
         return raw.uppercased()
     }
 
-    static func renderFull(remaining: Double, resetTime: String?) -> NSImage {
+    static func renderFull(remaining: Double, resetTime: String?, showLogo: Bool = true) -> NSImage {
         let logoSize: CGFloat = 16
         let ringSize: CGFloat = 22
         let gap: CGFloat = 4
@@ -58,31 +60,37 @@ enum MenuBarIconRenderer {
         let timeSize = (timeText as NSString).size(withAttributes: timeAttrs)
         let textWidth = timeText.isEmpty ? 0 : timeSize.width
         let timeGap = timeText.isEmpty ? 0 : gap
+        let logoWidth = showLogo ? logoSize + gap : 0
 
-        let totalWidth = logoSize + gap + ringSize + timeGap + textWidth
+        let totalWidth = logoWidth + ringSize + timeGap + textWidth
         let height: CGFloat = 22
 
         let image = NSImage(size: NSSize(width: totalWidth, height: height), flipped: false) { rect in
+            var xOffset: CGFloat = 0
+
             // Draw Claude logo on the left
-            if let logoData = Data(base64Encoded: logoBase64),
-               let logoImg = NSImage(data: logoData) {
-                let logoY = (height - logoSize) / 2
-                logoImg.draw(in: CGRect(x: 0, y: logoY, width: logoSize, height: logoSize),
-                             from: .zero, operation: .sourceOver, fraction: 1.0)
+            if showLogo {
+                if let logoData = Data(base64Encoded: logoBase64),
+                   let logoImg = NSImage(data: logoData) {
+                    let logoY = (height - logoSize) / 2
+                    logoImg.draw(in: CGRect(x: 0, y: logoY, width: logoSize, height: logoSize),
+                                 from: .zero, operation: .sourceOver, fraction: 1.0)
+                }
+                xOffset = logoSize + gap
             }
 
-            // Draw ring in the middle
-            let ringX = logoSize + gap
+            // Draw ring
             let ringImg = renderRing(remaining: remaining)
-            ringImg.draw(in: CGRect(x: ringX, y: 0, width: ringSize, height: ringSize),
+            ringImg.draw(in: CGRect(x: xOffset, y: 0, width: ringSize, height: ringSize),
                          from: .zero, operation: .sourceOver, fraction: 1.0)
+            xOffset += ringSize
 
             // Draw reset time text on the right
             if !timeText.isEmpty {
-                let textX = ringX + ringSize + gap
+                xOffset += gap
                 let textY = (height - timeSize.height) / 2
                 (timeText as NSString).draw(
-                    at: CGPoint(x: textX, y: textY),
+                    at: CGPoint(x: xOffset, y: textY),
                     withAttributes: timeAttrs
                 )
             }

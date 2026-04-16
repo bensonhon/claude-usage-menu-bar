@@ -2,6 +2,7 @@ import SwiftUI
 
 struct UsagePopoverView: View {
     let service: UsageService
+    var settings: AppSettings
 
     private let popoverWidth: CGFloat = 340
     private let bgColor = Color(hex: "1A1A2E")
@@ -16,6 +17,7 @@ struct UsagePopoverView: View {
                     secondarySection
                     extraUsageSection
                     TokenHistoryView(activity: service.tokenActivity)
+                    settingsSection
                     footerSection
                 }
                 .padding(.horizontal, 16)
@@ -220,6 +222,41 @@ struct UsagePopoverView: View {
                     .fill(Color.white.opacity(0.04))
             )
         }
+    }
+
+    // MARK: - Settings
+
+    private var settingsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                Text("Menu Bar Options")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+                Spacer()
+            }
+
+            Toggle(isOn: Bindable(settings).showLogo) {
+                Text("Show Claude logo")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.85))
+            }
+            .toggleStyle(.checkbox)
+
+            Toggle(isOn: Bindable(settings).showResetTime) {
+                Text("Show reset time")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.85))
+            }
+            .toggleStyle(.checkbox)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white.opacity(0.04))
+        )
     }
 
     // MARK: - Footer

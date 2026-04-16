@@ -28,6 +28,7 @@ swiftc -parse-as-library -O \
     "${PROJECT_DIR}/ClaudeUsageMenuBar/UsagePopoverView.swift" \
     "${PROJECT_DIR}/ClaudeUsageMenuBar/UsageRingView.swift" \
     "${PROJECT_DIR}/ClaudeUsageMenuBar/TokenHistoryView.swift" \
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/Settings.swift" \
     -o "${MACOS_DIR}/${APP_NAME}"
 
 # Info.plist
