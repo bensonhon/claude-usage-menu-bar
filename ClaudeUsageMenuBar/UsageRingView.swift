@@ -6,21 +6,34 @@ struct UsageRingView: View {
     let lineWidth: CGFloat
     let label: String?
     let resetTime: String?
+    var darkMode: Bool = true
 
     @State private var animatedValue: Double = 0
+
+    private var labelColor: Color {
+        darkMode ? Color(hex: "CCCCCC") : Color(hex: "444444")
+    }
+    private var mutedColor: Color {
+        darkMode ? Color(hex: "999999") : Color(hex: "666666")
+    }
+    private var trackColor: Color {
+        darkMode ? Color.white.opacity(0.1) : Color(hex: "DDDDDD")
+    }
 
     init(
         remaining: Double,
         size: CGFloat = 100,
         lineWidth: CGFloat = 10,
         label: String? = nil,
-        resetTime: String? = nil
+        resetTime: String? = nil,
+        darkMode: Bool = true
     ) {
         self.remaining = remaining
         self.size = size
         self.lineWidth = lineWidth
         self.label = label
         self.resetTime = resetTime
+        self.darkMode = darkMode
     }
 
     private var ringColor: Color {
@@ -39,7 +52,7 @@ struct UsageRingView: View {
                 // Background track
                 Circle()
                     .stroke(
-                        Color.white.opacity(0.08),
+                        trackColor,
                         style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                     )
                     .frame(width: size, height: size)
@@ -62,7 +75,7 @@ struct UsageRingView: View {
                         .foregroundColor(ringColor)
                     Text("left")
                         .font(.system(size: size * 0.11, weight: .medium))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(mutedColor)
                 }
             }
 
@@ -70,7 +83,7 @@ struct UsageRingView: View {
                 if let label {
                     Text(label)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.9))
+                        .foregroundColor(labelColor)
                 }
 
                 if let resetTime {
@@ -80,7 +93,7 @@ struct UsageRingView: View {
                         Text("Reset by \(resetTime)")
                             .font(.system(size: 10))
                     }
-                    .foregroundColor(.secondary)
+                    .foregroundColor(mutedColor)
                 }
             }
         }
@@ -104,6 +117,20 @@ struct UsageProgressBar: View {
     let utilization: Double
     let remaining: Double
     let resetTime: String
+    var darkMode: Bool = true
+
+    private var labelColor: Color {
+        darkMode ? Color(hex: "CCCCCC") : Color(hex: "444444")
+    }
+    private var mutedColor: Color {
+        darkMode ? Color(hex: "999999") : Color(hex: "666666")
+    }
+    private var trackBgColor: Color {
+        darkMode ? Color.white.opacity(0.1) : Color(hex: "DDDDDD")
+    }
+    private var cardBgColor: Color {
+        darkMode ? Color(hex: "222244") : Color(hex: "E8E8EC")
+    }
 
     private var barColor: Color {
         if remaining > 30 {
@@ -120,7 +147,7 @@ struct UsageProgressBar: View {
             HStack {
                 Text(label)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(0.85))
+                    .foregroundColor(labelColor)
                 Spacer()
                 Text("\(Int(remaining))% left")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -131,7 +158,7 @@ struct UsageProgressBar: View {
                 ZStack(alignment: .leading) {
                     // Track
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.white.opacity(0.08))
+                        .fill(trackBgColor)
                         .frame(height: 6)
 
                     // Fill (show remaining)
@@ -152,7 +179,7 @@ struct UsageProgressBar: View {
                         Text("Reset by \(resetTime)")
                             .font(.system(size: 9))
                     }
-                    .foregroundColor(.secondary)
+                    .foregroundColor(mutedColor)
                 }
             }
         }
@@ -160,7 +187,7 @@ struct UsageProgressBar: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color.white.opacity(0.04))
+                .fill(cardBgColor)
         )
     }
 }

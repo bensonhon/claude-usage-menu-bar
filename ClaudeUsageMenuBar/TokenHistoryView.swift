@@ -2,6 +2,17 @@ import SwiftUI
 
 struct TokenHistoryView: View {
     let activity: TokenActivity
+    var darkMode: Bool = true
+
+    private var labelColor: Color {
+        darkMode ? Color(hex: "CCCCCC") : Color(hex: "444444")
+    }
+    private var textColor: Color {
+        darkMode ? .white : Color(hex: "1A1A1A")
+    }
+    private var cardBgColor: Color {
+        darkMode ? Color(hex: "222244") : Color(hex: "E8E8EC")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -11,7 +22,7 @@ struct TokenHistoryView: View {
                     .foregroundColor(Color(hex: "E8732A"))
                 Text("Token Activity")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.9))
+                    .foregroundColor(labelColor)
             }
 
             // Summary row
@@ -37,7 +48,7 @@ struct TokenHistoryView: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.04))
+                .fill(cardBgColor)
         )
     }
 
@@ -45,10 +56,10 @@ struct TokenHistoryView: View {
         VStack(spacing: 3) {
             Text(formatTokenCount(value))
                 .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
+                .foregroundColor(textColor)
             Text(title)
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.secondary)
+                .foregroundColor(labelColor)
         }
         .frame(maxWidth: .infinity)
     }
@@ -60,11 +71,11 @@ struct TokenHistoryView: View {
                 .frame(width: 6, height: 6)
             Text(label)
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.secondary)
+                .foregroundColor(labelColor)
             Spacer()
             Text(formatTokenCount(tokens))
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .foregroundColor(.white.opacity(0.8))
+                .foregroundColor(labelColor)
         }
     }
 

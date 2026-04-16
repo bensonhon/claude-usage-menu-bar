@@ -5,8 +5,22 @@ struct UsagePopoverView: View {
     var settings: AppSettings
 
     private let popoverWidth: CGFloat = 340
-    private let bgColor = Color(hex: "1A1A2E")
-    private let cardColor = Color(hex: "16213E")
+
+    private var bgColor: Color {
+        settings.darkMode ? Color(hex: "1A1A2E") : Color(hex: "F5F5F7")
+    }
+    private var cardColor: Color {
+        settings.darkMode ? Color(hex: "222244") : Color(hex: "E8E8EC")
+    }
+    private var textPrimary: Color {
+        settings.darkMode ? .white : Color(hex: "1A1A1A")
+    }
+    private var textSecondary: Color {
+        settings.darkMode ? Color(hex: "CCCCCC") : Color(hex: "444444")
+    }
+    private var textMuted: Color {
+        settings.darkMode ? Color(hex: "999999") : Color(hex: "666666")
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,7 +30,7 @@ struct UsagePopoverView: View {
                     mainRingsSection
                     secondarySection
                     extraUsageSection
-                    TokenHistoryView(activity: service.tokenActivity)
+                    TokenHistoryView(activity: service.tokenActivity, darkMode: settings.darkMode)
                     settingsSection
                     footerSection
                 }
@@ -40,7 +54,7 @@ struct UsagePopoverView: View {
             HStack {
                 Text("Claude Usage")
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(textPrimary)
                 Spacer()
                 Text(service.planName)
                     .font(.system(size: 11, weight: .semibold))
@@ -60,7 +74,7 @@ struct UsagePopoverView: View {
                         .foregroundColor(modelColor(model))
                     Text("Current Model")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(textMuted)
                     Text(formatModelName(model))
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundColor(modelColor(model))
@@ -108,7 +122,8 @@ struct UsagePopoverView: View {
                     size: 70,
                     lineWidth: 7,
                     label: "Session (5h)",
-                    resetTime: session.resetClockString
+                    resetTime: session.resetClockString,
+                    darkMode: settings.darkMode
                 )
                 .frame(maxWidth: .infinity)
             }
@@ -119,7 +134,8 @@ struct UsagePopoverView: View {
                     size: 70,
                     lineWidth: 7,
                     label: "Weekly (7d)",
-                    resetTime: weekly.resetClockString
+                    resetTime: weekly.resetClockString,
+                    darkMode: settings.darkMode
                 )
                 .frame(maxWidth: .infinity)
             }
@@ -128,7 +144,7 @@ struct UsagePopoverView: View {
         .padding(.horizontal, 8)
         .background(
             RoundedRectangle(cornerRadius: 14)
-                .fill(Color.white.opacity(0.03))
+                .fill(cardColor)
         )
     }
 
@@ -145,7 +161,7 @@ struct UsagePopoverView: View {
                         .foregroundColor(Color(hex: "E8732A").opacity(0.8))
                     Text("Model Usage")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.9))
+                        .foregroundColor(textPrimary)
                     Spacer()
                 }
 
@@ -154,7 +170,8 @@ struct UsagePopoverView: View {
                         label: item.label,
                         utilization: item.utilization,
                         remaining: item.remaining,
-                        resetTime: item.resetTime
+                        resetTime: item.resetTime,
+                        darkMode: settings.darkMode
                     )
                 }
             }
@@ -166,36 +183,41 @@ struct UsagePopoverView: View {
     @ViewBuilder
     private var extraUsageSection: some View {
         if let extra = service.extraUsage, extra.isEnabled {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Image(systemName: "dollarsign.circle.fill")
                         .font(.system(size: 12))
                         .foregroundColor(Color(hex: "F59E0B"))
                     Text("Extra Usage")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.9))
+                        .foregroundColor(textPrimary)
                     Spacer()
                 }
 
-                HStack {
+                HStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Credits Used")
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(textMuted)
                         Text(String(format: "$%.2f", (extra.usedCredits ?? 0) / 100))
                             .font(.system(size: 18, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
+                            .foregroundColor(textPrimary)
                     }
-                    Spacer()
+                    .frame(maxWidth: .infinity)
                     if let limit = extra.monthlyLimit {
-                        VStack(alignment: .trailing, spacing: 2) {
+                        Text("/")
+                            .font(.system(size: 18, weight: .light))
+                            .foregroundColor(textMuted)
+                            .padding(.horizontal, 4)
+                        VStack(alignment: .leading, spacing: 2) {
                             Text("Monthly Limit")
                                 .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(.secondary)
+                                .foregroundColor(textMuted)
                             Text(String(format: "$%.2f", limit / 100))
                                 .font(.system(size: 18, weight: .bold, design: .rounded))
-                                .foregroundColor(.white.opacity(0.6))
+                                .foregroundColor(textPrimary)
                         }
+                        .frame(maxWidth: .infinity)
                     }
                 }
 
@@ -203,7 +225,7 @@ struct UsagePopoverView: View {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.white.opacity(0.08))
+                                .fill(cardColor)
                                 .frame(height: 6)
                             RoundedRectangle(cornerRadius: 3)
                                 .fill(Color(hex: "F59E0B"))
@@ -216,10 +238,12 @@ struct UsagePopoverView: View {
                     .frame(height: 6)
                 }
             }
-            .padding(12)
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.white.opacity(0.04))
+                    .fill(cardColor)
             )
         }
     }
@@ -231,31 +255,69 @@ struct UsagePopoverView: View {
             HStack {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(textMuted)
                 Text("Menu Bar Options")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.9))
+                    .foregroundColor(textPrimary)
                 Spacer()
             }
 
             Toggle(isOn: Bindable(settings).showLogo) {
                 Text("Show Claude logo")
                     .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.85))
+                    .foregroundColor(textPrimary)
             }
             .toggleStyle(.checkbox)
 
             Toggle(isOn: Bindable(settings).showResetTime) {
                 Text("Show reset time")
                     .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.85))
+                    .foregroundColor(textPrimary)
             }
             .toggleStyle(.checkbox)
+
+            Divider()
+                .background(cardColor)
+
+            HStack {
+                Text("Appearance")
+                    .font(.system(size: 12))
+                    .foregroundColor(textPrimary)
+                Spacer()
+                HStack(spacing: 2) {
+                    Image(systemName: "moon.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(settings.darkMode ? .white : textMuted)
+                        .frame(width: 34, height: 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(settings.darkMode ? Color(hex: "E8732A") : Color.clear)
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture { settings.darkMode = true }
+
+                    Image(systemName: "sun.max.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(!settings.darkMode ? .white : textMuted)
+                        .frame(width: 34, height: 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(!settings.darkMode ? Color(hex: "E8732A") : Color.clear)
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture { settings.darkMode = false }
+                }
+                .padding(3)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(settings.darkMode ? Color(hex: "333355") : Color(hex: "D0D0D5"))
+                )
+            }
         }
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.04))
+                .fill(cardColor)
         )
     }
 
@@ -264,19 +326,19 @@ struct UsagePopoverView: View {
     private var footerSection: some View {
         VStack(spacing: 8) {
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(cardColor)
 
             HStack {
                 if let lastUpdated = service.lastUpdated {
                     Text("Updated \(lastUpdated, style: .relative) ago")
                         .font(.system(size: 10))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(textMuted)
                 }
 
                 Spacer()
 
                 Button {
-                    Task { await service.refresh() }
+                    Task { await service.refresh(force: true) }
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.clockwise")
@@ -305,7 +367,7 @@ struct UsagePopoverView: View {
                         Image(systemName: "arrow.up.right")
                             .font(.system(size: 8, weight: .medium))
                     }
-                    .foregroundColor(.secondary)
+                    .foregroundColor(textMuted)
                 }
                 .onHover { hovering in
                     if hovering {

@@ -20,7 +20,10 @@ final class UsageService {
 
     // MARK: - Public
 
-    func refresh() async {
+    func refresh(force: Bool = false) async {
+        if !force, let lastUpdated, Date().timeIntervalSince(lastUpdated) < 60 {
+            return
+        }
         loadState = .loading
         do {
             let (token, plan) = try fetchOAuthToken()
