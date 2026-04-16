@@ -180,7 +180,7 @@ struct UsagePopoverView: View {
                         Text("Credits Used")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.secondary)
-                        Text(String(format: "$%.2f", extra.usedCredits ?? 0))
+                        Text(String(format: "$%.2f", (extra.usedCredits ?? 0) / 100))
                             .font(.system(size: 18, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
                     }
@@ -190,7 +190,7 @@ struct UsagePopoverView: View {
                             Text("Monthly Limit")
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundColor(.secondary)
-                            Text(String(format: "$%.2f", limit))
+                            Text(String(format: "$%.2f", limit / 100))
                                 .font(.system(size: 18, weight: .bold, design: .rounded))
                                 .foregroundColor(.white.opacity(0.6))
                         }
