@@ -1,0 +1,8 @@
+build/
+.build/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+.DS_Store
+vfs-overlay.yaml
+Package.swift
