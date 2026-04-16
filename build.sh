@@ -56,11 +56,18 @@ cat > "${CONTENTS}/Info.plist" << 'PLIST'
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>
 </plist>
 PLIST
+
+# Copy app icon
+if [ -f "${PROJECT_DIR}/ClaudeUsageMenuBar/AppIcon.icns" ]; then
+    cp "${PROJECT_DIR}/ClaudeUsageMenuBar/AppIcon.icns" "${RESOURCES_DIR}/AppIcon.icns"
+fi
 
 # Ad-hoc sign
 codesign --force --sign - "${APP_BUNDLE}" 2>/dev/null || true
