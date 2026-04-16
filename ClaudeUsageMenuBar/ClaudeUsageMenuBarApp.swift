@@ -1,9 +1,15 @@
 import SwiftUI
 import AppKit
+import ServiceManagement
 
 @main
 struct ClaudeUsageMenuBarApp: App {
     @State private var service = UsageService()
+
+    init() {
+        // Auto-register as login item so the app starts on boot
+        try? SMAppService.mainApp.register()
+    }
 
     var body: some Scene {
         MenuBarExtra {
