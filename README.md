@@ -4,10 +4,11 @@ A native macOS menu bar app that displays your Claude Code subscription usage wi
 
 ## Install
 
-1. Download **ClaudeUsageMenuBar-v1.0.0.zip** from [Releases](https://github.com/bensonhon/claude-usage-menu-bar/releases)
-2. Extract the zip
-3. Move **ClaudeUsageMenuBar.app** to `/Applications`
-4. Right-click the app → **Open** (first time only, to bypass Gatekeeper)
+1. Download **ClaudeUsageMenuBar-v1.0.0.dmg** from [Releases](https://github.com/bensonhon/claude-usage-menu-bar/releases)
+2. Open the DMG
+3. Drag **Claude Usage Monitor** to the **Applications** folder
+4. Eject the DMG
+5. Open the app from Applications — right-click → **Open** the first time
 
 ### Requirements
 
