@@ -4,6 +4,9 @@ struct UsagePopoverView: View {
     let service: UsageService
     var settings: AppSettings
 
+    @State private var refreshHovered = false
+    @State private var quitHovered = false
+
     private let popoverWidth: CGFloat = 340
 
     private var bgColor: Color {
@@ -347,13 +350,52 @@ struct UsagePopoverView: View {
                             .font(.system(size: 10, weight: .medium))
                     }
                     .foregroundColor(Color(hex: "E8732A"))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color(hex: "E8732A").opacity(refreshHovered ? 0.18 : 0))
+                    )
                 }
                 .buttonStyle(.plain)
-                .onHover { hovering in
-                    if hovering {
-                        NSCursor.pointingHand.push()
-                    } else {
-                        NSCursor.pop()
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active:
+                        refreshHovered = true
+                        NSCursor.pointingHand.set()
+                    case .ended:
+                        refreshHovered = false
+                        NSCursor.arrow.set()
+                    }
+                }
+
+                Button {
+                    NSApp.terminate(nil)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "power")
+                            .font(.system(size: 10, weight: .medium))
+                        Text("Quit")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundColor(Color(hex: "EF4444"))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color(hex: "EF4444").opacity(quitHovered ? 0.18 : 0))
+                    )
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("q", modifiers: .command)
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active:
+                        quitHovered = true
+                        NSCursor.pointingHand.set()
+                    case .ended:
+                        quitHovered = false
+                        NSCursor.arrow.set()
                     }
                 }
             }
