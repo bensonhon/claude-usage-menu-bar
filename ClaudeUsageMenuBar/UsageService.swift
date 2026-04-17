@@ -7,6 +7,7 @@ final class UsageService {
     var windows: [String: UsageWindow] = [:]
     var extraUsage: ExtraUsage? = nil
     var tokenActivity: TokenActivity = TokenActivity()
+    var tokenActivityLoaded: Bool = false
     var lastUpdated: Date? = nil
     var planName: String = "Pro"
 
@@ -21,34 +22,39 @@ final class UsageService {
     // MARK: - Public
 
     func refresh(force: Bool = false) async {
-        if !force, let lastUpdated, Date().timeIntervalSince(lastUpdated) < 60 {
-            return
-        }
-        loadState = .loading
-        do {
-            let (token, plan) = try fetchOAuthToken()
-            let response = try await fetchUsage(token: token)
-            await MainActor.run {
-                self.windows = response.windows
-                self.extraUsage = response.extraUsage
-                self.planName = plan
-                self.lastUpdated = Date()
-                self.loadState = .loaded
-            }
-        } catch {
-            await MainActor.run {
-                if case .loaded = self.loadState {
-                    // Keep showing stale data, just update error
-                } else {
-                    self.loadState = .error(error.localizedDescription)
+        async let activityTask = Task.detached(priority: .userInitiated) { [weak self] in
+            await self?.parseLocalTokenHistory() ?? TokenActivity()
+        }.value
+
+        let skipNetwork = !force && lastUpdated.map { Date().timeIntervalSince($0) < 60 } ?? false
+
+        if !skipNetwork {
+            loadState = .loading
+            do {
+                let (token, plan) = try fetchOAuthToken()
+                let response = try await fetchUsage(token: token)
+                await MainActor.run {
+                    self.windows = response.windows
+                    self.extraUsage = response.extraUsage
+                    self.planName = plan
+                    self.lastUpdated = Date()
+                    self.loadState = .loaded
+                }
+            } catch {
+                await MainActor.run {
+                    if case .loaded = self.loadState {
+                        // Keep showing stale data, just update error
+                    } else {
+                        self.loadState = .error(error.localizedDescription)
+                    }
                 }
             }
         }
 
-        // Token history is non-critical
-        let activity = parseLocalTokenHistory()
+        let activity = await activityTask
         await MainActor.run {
             self.tokenActivity = activity
+            self.tokenActivityLoaded = true
         }
     }
 
@@ -142,106 +148,210 @@ final class UsageService {
 
     // MARK: - Token History (JSONL)
 
-    private func parseLocalTokenHistory() -> TokenActivity {
-        var activity = TokenActivity()
-        var seenIDs = Set<String>()
+    /// Per-file parse output — collapsed into one `TokenActivity` at the end.
+    private struct FileParseResult {
+        var todayTokens: Int = 0
+        var last3DaysTokens: Int = 0
+        var last7DaysTokens: Int = 0
+        var todayInputTokens: Int = 0
+        var todayOutputTokens: Int = 0
+        var todayCacheCreationTokens: Int = 0
+        var todayCacheReadTokens: Int = 0
+        var sessions: [String: SessionAccum] = [:]
+        var latestModel: String? = nil
+        var latestModelTimestamp: Date = .distantPast
+    }
 
+    private struct SessionAccum {
+        var model: String
+        var cwd: String?
+        var lastActivity: Date
+    }
+
+    /// Scans `.jsonl` files modified in the last 10 days concurrently via TaskGroup.
+    /// Each message's own timestamp decides which window (today / 3d / 7d) it
+    /// contributes to — file mod-date is just a gate to skip old files.
+    private func parseLocalTokenHistory() async -> TokenActivity {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         let claudeDir = homeDir.appendingPathComponent(".claude/projects")
-
-        guard FileManager.default.fileExists(atPath: claudeDir.path) else {
-            return activity
-        }
+        guard FileManager.default.fileExists(atPath: claudeDir.path) else { return TokenActivity() }
 
         let calendar = Calendar.current
         let now = Date()
         let startOfToday = calendar.startOfDay(for: now)
-        let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? now
-        let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
+        let start3Days = startOfToday.addingTimeInterval(-2 * 86_400)
+        let start7Days = startOfToday.addingTimeInterval(-6 * 86_400)
+        let sessionCutoff = now.addingTimeInterval(-10 * 86_400)
 
-        // Collect all JSONL files with modification dates
-        var jsonlFiles: [(url: URL, modDate: Date)] = []
+        // Gather candidate files first — the same cutoff covers the 7-day token
+        // windows and the 10-day session window (pick the earlier).
+        let fileCutoff = sessionCutoff
+        var fileURLs: [URL] = []
         let enumerator = FileManager.default.enumerator(
             at: claudeDir,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles]
         )
-        while let fileURL = enumerator?.nextObject() as? URL {
-            guard fileURL.pathExtension == "jsonl" else { continue }
-            let modDate = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            jsonlFiles.append((url: fileURL, modDate: modDate))
+        while let url = enumerator?.nextObject() as? URL {
+            guard url.pathExtension == "jsonl" else { continue }
+            let modDate = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            if modDate < fileCutoff { continue }
+            fileURLs.append(url)
         }
-        // Sort newest first so we detect current model from the most recent file
-        jsonlFiles.sort { $0.modDate > $1.modDate }
 
-        let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        // Parse each file concurrently.
+        var results: [FileParseResult] = await withTaskGroup(of: FileParseResult.self) { group in
+            for url in fileURLs {
+                group.addTask { [weak self] in
+                    self?.parseFile(url: url,
+                                    startOfToday: startOfToday,
+                                    start3Days: start3Days,
+                                    start7Days: start7Days) ?? FileParseResult()
+                }
+            }
+            var collected: [FileParseResult] = []
+            collected.reserveCapacity(fileURLs.count)
+            for await r in group { collected.append(r) }
+            return collected
+        }
 
-        let isoFormatterBasic = ISO8601DateFormatter()
-        isoFormatterBasic.formatOptions = [.withInternetDateTime]
-
+        // Merge.
+        var activity = TokenActivity()
+        var mergedSessions: [String: SessionAccum] = [:]
         var latestModel: String? = nil
-        var latestModelTimestamp: Date = .distantPast
+        var latestModelTs: Date = .distantPast
 
-        for (fileURL, _) in jsonlFiles {
-            guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
-
-            for line in content.components(separatedBy: .newlines) {
-                guard !line.isEmpty,
-                      let lineData = line.data(using: .utf8) else { continue }
-
-                guard let msg = try? JSONDecoder().decode(JSONLMessage.self, from: lineData) else { continue }
-
-                guard msg.type == "assistant",
-                      let message = msg.message else { continue }
-
-                // Parse timestamp
-                var msgDate: Date? = nil
-                if let ts = msg.timestamp {
-                    let cleaned = ts.hasSuffix("Z") ? String(ts.dropLast()) + "+00:00" : ts
-                    msgDate = isoFormatter.date(from: cleaned)
-                        ?? isoFormatterBasic.date(from: cleaned)
-                }
-
-                // Track the most recent model
-                if let model = message.model, let date = msgDate, date > latestModelTimestamp {
-                    latestModel = model
-                    latestModelTimestamp = date
-                }
-
-                guard let usage = message.usage else { continue }
-
-                if let id = message.id {
-                    guard !seenIDs.contains(id) else { continue }
-                    seenIDs.insert(id)
-                }
-
-                let input = usage.inputTokens ?? 0
-                let output = usage.outputTokens ?? 0
-                let cacheCreate = usage.cacheCreationInputTokens ?? 0
-                let cacheRead = usage.cacheReadInputTokens ?? 0
-                let total = input + output + cacheCreate + cacheRead
-
-                guard let date = msgDate else { continue }
-
-                if date >= startOfMonth {
-                    activity.monthTokens += total
-                }
-                if date >= startOfWeek {
-                    activity.weekTokens += total
-                }
-                if date >= startOfToday {
-                    activity.todayTokens += total
-                    activity.todayInputTokens += input
-                    activity.todayOutputTokens += output
-                    activity.todayCacheCreationTokens += cacheCreate
-                    activity.todayCacheReadTokens += cacheRead
+        for r in results {
+            activity.todayTokens += r.todayTokens
+            activity.last3DaysTokens += r.last3DaysTokens
+            activity.last7DaysTokens += r.last7DaysTokens
+            activity.todayInputTokens += r.todayInputTokens
+            activity.todayOutputTokens += r.todayOutputTokens
+            activity.todayCacheCreationTokens += r.todayCacheCreationTokens
+            activity.todayCacheReadTokens += r.todayCacheReadTokens
+            if let model = r.latestModel, r.latestModelTimestamp > latestModelTs {
+                latestModel = model
+                latestModelTs = r.latestModelTimestamp
+            }
+            for (sid, acc) in r.sessions {
+                if let existing = mergedSessions[sid] {
+                    if acc.lastActivity > existing.lastActivity { mergedSessions[sid] = acc }
+                } else {
+                    mergedSessions[sid] = acc
                 }
             }
         }
+        _ = results  // keep for any future use / silence warning
+        results.removeAll(keepingCapacity: false)
 
         activity.currentModel = latestModel
+
+        // Dedupe sessions by project name (most recent wins), keep last 10 days.
+        var byProject: [String: SessionSummary] = [:]
+        for (id, acc) in mergedSessions where acc.lastActivity >= sessionCutoff {
+            let project = acc.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "(unknown)"
+            let summary = SessionSummary(id: id, projectName: project, model: acc.model, lastActivity: acc.lastActivity)
+            if let existing = byProject[project] {
+                if summary.lastActivity > existing.lastActivity {
+                    byProject[project] = summary
+                }
+            } else {
+                byProject[project] = summary
+            }
+        }
+        activity.recentSessions = byProject.values.sorted { $0.lastActivity > $1.lastActivity }
+
         return activity
+    }
+
+    /// Parses a single JSONL file and returns its contribution. Pure / thread-safe.
+    private func parseFile(url: URL, startOfToday: Date, start3Days: Date, start7Days: Date) -> FileParseResult {
+        var result = FileParseResult()
+        guard let lines = readTailLines(of: url) else { return result }
+        var seenIDs = Set<String>()
+
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let isoFormatterBasic = ISO8601DateFormatter()
+        isoFormatterBasic.formatOptions = [.withInternetDateTime]
+
+        for line in lines {
+            guard !line.isEmpty,
+                  let lineData = line.data(using: .utf8),
+                  let msg = try? JSONDecoder().decode(JSONLMessage.self, from: lineData),
+                  msg.type == "assistant",
+                  let message = msg.message else { continue }
+
+            var msgDate: Date? = nil
+            if let ts = msg.timestamp {
+                let cleaned = ts.hasSuffix("Z") ? String(ts.dropLast()) + "+00:00" : ts
+                msgDate = isoFormatter.date(from: cleaned) ?? isoFormatterBasic.date(from: cleaned)
+            }
+
+            if let model = message.model, let date = msgDate, date > result.latestModelTimestamp {
+                result.latestModel = model
+                result.latestModelTimestamp = date
+            }
+
+            if let sid = msg.sessionId, let model = message.model, let date = msgDate {
+                if let existing = result.sessions[sid] {
+                    if date > existing.lastActivity {
+                        result.sessions[sid] = SessionAccum(model: model, cwd: msg.cwd ?? existing.cwd, lastActivity: date)
+                    }
+                } else {
+                    result.sessions[sid] = SessionAccum(model: model, cwd: msg.cwd, lastActivity: date)
+                }
+            }
+
+            guard let usage = message.usage, let date = msgDate else { continue }
+            if let id = message.id {
+                if seenIDs.contains(id) { continue }
+                seenIDs.insert(id)
+            }
+
+            let input = usage.inputTokens ?? 0
+            let output = usage.outputTokens ?? 0
+            let cacheCreate = usage.cacheCreationInputTokens ?? 0
+            let cacheRead = usage.cacheReadInputTokens ?? 0
+            let total = input + output + cacheCreate + cacheRead
+
+            if date >= start7Days { result.last7DaysTokens += total }
+            if date >= start3Days { result.last3DaysTokens += total }
+            if date >= startOfToday {
+                result.todayTokens += total
+                result.todayInputTokens += input
+                result.todayOutputTokens += output
+                result.todayCacheCreationTokens += cacheCreate
+                result.todayCacheReadTokens += cacheRead
+            }
+        }
+
+        return result
+    }
+
+    /// Reads up to the last ~128 KB of a JSONL file without loading the whole thing.
+    /// Trades a small amount of precision (token totals may miss very long sessions)
+    /// for much faster parsing — the recent entries are what we need for display.
+    private func readTailLines(of url: URL, maxBytes: UInt64 = 128 * 1024) -> [String]? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+
+        do {
+            let end = try handle.seekToEnd()
+            let offset: UInt64 = end > maxBytes ? end - maxBytes : 0
+            try handle.seek(toOffset: offset)
+            guard let data = try handle.readToEnd(), let str = String(data: data, encoding: .utf8) else {
+                return nil
+            }
+            var parts = str.components(separatedBy: "\n")
+            // If we started mid-file, the first slice is likely a partial line — drop it.
+            if offset > 0, !parts.isEmpty {
+                parts.removeFirst()
+            }
+            return parts.filter { !$0.isEmpty }
+        } catch {
+            return nil
+        }
     }
 
     // MARK: - Timer

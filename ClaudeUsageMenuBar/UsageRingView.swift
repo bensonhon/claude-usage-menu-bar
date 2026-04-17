@@ -92,6 +92,8 @@ struct UsageRingView: View {
                             .font(.system(size: 9))
                         Text("Reset by \(resetTime)")
                             .font(.system(size: 10))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
                     .foregroundColor(mutedColor)
                 }

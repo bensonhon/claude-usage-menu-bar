@@ -155,19 +155,29 @@ struct OAuthToken: Codable {
 
 struct TokenActivity {
     var todayTokens: Int = 0
-    var weekTokens: Int = 0
-    var monthTokens: Int = 0
+    var last3DaysTokens: Int = 0
+    var last7DaysTokens: Int = 0
     var todayInputTokens: Int = 0
     var todayOutputTokens: Int = 0
     var todayCacheCreationTokens: Int = 0
     var todayCacheReadTokens: Int = 0
     var currentModel: String? = nil
     var currentSessionFile: String? = nil
+    var recentSessions: [SessionSummary] = []
+}
+
+struct SessionSummary: Identifiable, Equatable {
+    let id: String           // sessionId
+    let projectName: String  // last path component of cwd
+    let model: String        // latest assistant message's model
+    let lastActivity: Date
 }
 
 struct JSONLMessage: Codable {
     let type: String?
     let timestamp: String?
+    let sessionId: String?
+    let cwd: String?
     let message: MessageContent?
 
     struct MessageContent: Codable {

@@ -7,7 +7,7 @@ struct UsagePopoverView: View {
     @State private var refreshHovered = false
     @State private var quitHovered = false
 
-    private let popoverWidth: CGFloat = 340
+    private let popoverWidth: CGFloat = 300
 
     private var bgColor: Color {
         settings.darkMode ? Color(hex: "1A1A2E") : Color(hex: "F5F5F7")
@@ -33,7 +33,16 @@ struct UsagePopoverView: View {
                     mainRingsSection
                     secondarySection
                     extraUsageSection
-                    TokenHistoryView(activity: service.tokenActivity, darkMode: settings.darkMode)
+                    RecentSessionsView(
+                        sessions: service.tokenActivity.recentSessions,
+                        isLoading: !service.tokenActivityLoaded,
+                        darkMode: settings.darkMode
+                    )
+                    TokenHistoryView(
+                        activity: service.tokenActivity,
+                        isLoading: !service.tokenActivityLoaded,
+                        darkMode: settings.darkMode
+                    )
                     settingsSection
                     footerSection
                 }
@@ -53,66 +62,21 @@ struct UsagePopoverView: View {
     // MARK: - Header
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Claude Usage")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(textPrimary)
-                Spacer()
-                Text(service.planName)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Color(hex: "E8732A"))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(Color(hex: "E8732A").opacity(0.15))
-                    )
-            }
-
-            if let model = service.tokenActivity.currentModel {
-                HStack(spacing: 6) {
-                    Image(systemName: "cpu")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(modelColor(model))
-                    Text("Current Model")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(textMuted)
-                    Text(formatModelName(model))
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundColor(modelColor(model))
-                    Spacer()
-                }
+        HStack {
+            Text("Claude Usage")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(textPrimary)
+            Spacer()
+            Text(service.planName)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Color(hex: "E8732A"))
                 .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.vertical, 4)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(modelColor(model).opacity(0.1))
+                    Capsule()
+                        .fill(Color(hex: "E8732A").opacity(0.15))
                 )
-            }
         }
-    }
-
-    private func formatModelName(_ raw: String) -> String {
-        // "claude-opus-4-6" → "Opus 4.6"
-        // "claude-sonnet-4-6" → "Sonnet 4.6"
-        let parts = raw.replacingOccurrences(of: "claude-", with: "")
-            .components(separatedBy: "-")
-        guard parts.count >= 3 else { return raw }
-        let name = parts[0].capitalized
-        let version = parts[1...].joined(separator: ".")
-        return "\(name) \(version)"
-    }
-
-    private func modelColor(_ raw: String) -> Color {
-        if raw.contains("opus") {
-            return Color(hex: "C084FC")  // purple
-        } else if raw.contains("sonnet") {
-            return Color(hex: "60A5FA")  // blue
-        } else if raw.contains("haiku") {
-            return Color(hex: "34D399")  // green
-        }
-        return Color(hex: "E8732A")
     }
 
     // MARK: - Main Rings
