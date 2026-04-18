@@ -4,27 +4,31 @@ A native macOS menu bar app that displays your Claude Code subscription usage wi
 
 ## Install
 
-1. Download **ClaudeUsageMenuBar-v1.0.0.dmg** from [Releases](https://github.com/bensonhon/claude-usage-menu-bar/releases)
+1. Download the latest **ClaudeUsageMenuBar-vX.Y.Z.dmg** from [Releases](https://github.com/bensonhon/claude-usage-menu-bar/releases)
 2. Open the DMG
 3. Drag **Claude Usage Monitor** to the **Applications** folder
 4. Eject the DMG
-5. Open the app from Applications — right-click → **Open** the first time
+5. Open the app from Applications — right-click → **Open** the first time (the app is not notarized yet, so Gatekeeper will block a plain double-click)
 
 ### Requirements
 
 - macOS 14 (Sonoma) or later
-- Logged in to Claude Code (OAuth token in Keychain)
+- **Claude Code CLI** signed in (OAuth token in Keychain). Claude Desktop users are **not** supported — Desktop's credentials are encrypted separately and its activity doesn't write to `~/.claude/projects/`, so neither usage data nor token history can be read.
 
 ## Features
 
-- **Menu bar icon** — Claude logo + usage ring with percentage + session reset time
+- **Menu bar icon** — Claude logo + usage ring with percentage + session reset time. Shows `?` when no data is available.
 - **Color-coded rings** — Green (>30%), amber (10-30%), red (<10%) remaining
 - **Session & weekly rings** — 5-hour and 7-day usage at a glance
-- **Per-model usage bars** — Sonnet, Opus, Omelette, and other model breakdowns
-- **Current model detection** — Shows which Claude model you're using (e.g. Opus 4.6)
-- **Token activity** — Today/week/month token counts with input/output/cache breakdown
+- **Per-model usage bars** — Sonnet, Opus, Haiku, and other model breakdowns
+- **Recent Sessions card** — Last 10 days of Claude Code sessions with project name, model, and how long ago it was used. Auto-scrolls (credits-style) with 3 rows visible; hover to pause and scroll manually.
+- **Token activity** — Today / Last 3 Days / Last 7 Days token counts with input/output/cache breakdown for today
 - **Extra usage tracking** — Credits used and monthly limit if enabled
-- **Auto-refresh** — Updates every 60 seconds
+- **Light/dark mode** toggle
+- **Adaptive refresh** — 60 s when signed in, 15 s while waiting for sign-in to catch up quickly
+- **Quit button** (⌘Q) in the popover footer
+- **Skeleton placeholders** while the JSONL history is being parsed on launch
+- **Fast parse** — per-file concurrent parse via `TaskGroup`, tail-only read of each JSONL
 
 ## Build from Source
 
@@ -46,5 +50,11 @@ This is a known Apple Command Line Tools bug.
 
 1. Reads your OAuth token from macOS Keychain (`Claude Code-credentials`)
 2. Calls the Claude usage API to get session, weekly, and per-model usage windows
-3. Parses `~/.claude/projects/**/*.jsonl` files for token history and current model
-4. Displays everything in a dark-themed popover from the menu bar
+3. Parses `~/.claude/projects/**/*.jsonl` files (in parallel, tail-only) for token history, current model, and recent sessions
+4. Displays everything in a light/dark-themed popover from the menu bar
+
+## Caveats
+
+- **Claude Code CLI only.** Claude Desktop users are not supported — Desktop encrypts its credentials via Electron's `safeStorage` and writes no activity files to `~/.claude/projects/`, so neither the usage API nor the session/token history are reachable.
+- **No OAuth refresh.** If your CLI access token expires, the menu bar shows a no-data state (`?` rings, `—` plan badge) until the next time you use `claude` and the CLI refreshes the token.
+- **Token counts are approximate.** Each JSONL is read tail-only (last ~128 KB) for speed; very long sessions may slightly undercount.

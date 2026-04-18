@@ -289,7 +289,7 @@ struct UsagePopoverView: View {
     private func friendlyErrorMessage(_ raw: String) -> String {
         let lower = raw.lowercased()
         if lower.contains("keychain") || lower.contains("token") || lower.contains("401") {
-            return "Sign in via Claude Code to refresh usage data."
+            return "Requires Claude Code CLI. Sign in via `claude` to load usage data."
         }
         return raw
     }
