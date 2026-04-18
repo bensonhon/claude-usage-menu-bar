@@ -1,7 +1,9 @@
 import SwiftUI
 
 struct UsageRingView: View {
-    let remaining: Double
+    /// `nil` means we don't have data (e.g. token expired / fetch failed).
+    /// The ring renders empty with "?" inside.
+    let remaining: Double?
     let size: CGFloat
     let lineWidth: CGFloat
     let label: String?
@@ -21,7 +23,7 @@ struct UsageRingView: View {
     }
 
     init(
-        remaining: Double,
+        remaining: Double?,
         size: CGFloat = 100,
         lineWidth: CGFloat = 10,
         label: String? = nil,
@@ -37,6 +39,7 @@ struct UsageRingView: View {
     }
 
     private var ringColor: Color {
+        guard let remaining else { return mutedColor }
         if remaining > 30 {
             return Color(hex: "22C55E")
         } else if remaining > 10 {
@@ -57,25 +60,33 @@ struct UsageRingView: View {
                     )
                     .frame(width: size, height: size)
 
-                // Foreground arc
-                Circle()
-                    .trim(from: 0, to: animatedValue / 100)
-                    .stroke(
-                        ringColor,
-                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-                    )
-                    .frame(width: size, height: size)
-                    .rotationEffect(.degrees(-90))
-                    .shadow(color: ringColor.opacity(0.4), radius: lineWidth / 2)
+                // Foreground arc — only when we have data.
+                if remaining != nil {
+                    Circle()
+                        .trim(from: 0, to: animatedValue / 100)
+                        .stroke(
+                            ringColor,
+                            style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                        )
+                        .frame(width: size, height: size)
+                        .rotationEffect(.degrees(-90))
+                        .shadow(color: ringColor.opacity(0.4), radius: lineWidth / 2)
+                }
 
                 // Center text
                 VStack(spacing: 1) {
-                    Text("\(Int(remaining))%")
-                        .font(.system(size: size * 0.24, weight: .bold, design: .rounded))
-                        .foregroundColor(ringColor)
-                    Text("left")
-                        .font(.system(size: size * 0.11, weight: .medium))
-                        .foregroundColor(mutedColor)
+                    if let remaining {
+                        Text("\(Int(remaining))%")
+                            .font(.system(size: size * 0.24, weight: .bold, design: .rounded))
+                            .foregroundColor(ringColor)
+                        Text("left")
+                            .font(.system(size: size * 0.11, weight: .medium))
+                            .foregroundColor(mutedColor)
+                    } else {
+                        Text("?")
+                            .font(.system(size: size * 0.3, weight: .bold, design: .rounded))
+                            .foregroundColor(mutedColor)
+                    }
                 }
             }
 
@@ -86,27 +97,25 @@ struct UsageRingView: View {
                         .foregroundColor(labelColor)
                 }
 
-                if let resetTime {
-                    HStack(spacing: 3) {
-                        Image(systemName: "clock")
-                            .font(.system(size: 9))
-                        Text("Reset by \(resetTime)")
-                            .font(.system(size: 10))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    }
-                    .foregroundColor(mutedColor)
+                HStack(spacing: 3) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 9))
+                    Text(resetTime.map { "Reset by \($0)" } ?? "---")
+                        .font(.system(size: 10))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
+                .foregroundColor(mutedColor)
             }
         }
         .onAppear {
             withAnimation(.easeOut(duration: 0.8)) {
-                animatedValue = remaining
+                animatedValue = remaining ?? 0
             }
         }
         .onChange(of: remaining) { _, newValue in
             withAnimation(.easeOut(duration: 0.5)) {
-                animatedValue = newValue
+                animatedValue = newValue ?? 0
             }
         }
     }

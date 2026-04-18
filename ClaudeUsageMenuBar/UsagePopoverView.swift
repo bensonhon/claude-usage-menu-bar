@@ -67,14 +67,14 @@ struct UsagePopoverView: View {
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(textPrimary)
             Spacer()
-            Text(service.planName)
+            Text(service.hasUsageData ? service.planName : "—")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(hex: "E8732A"))
+                .foregroundColor(service.hasUsageData ? Color(hex: "E8732A") : textMuted)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
                 .background(
                     Capsule()
-                        .fill(Color(hex: "E8732A").opacity(0.15))
+                        .fill((service.hasUsageData ? Color(hex: "E8732A") : textMuted).opacity(0.15))
                 )
         }
     }
@@ -83,29 +83,25 @@ struct UsagePopoverView: View {
 
     private var mainRingsSection: some View {
         HStack(spacing: 20) {
-            if let session = service.sessionWindow {
-                UsageRingView(
-                    remaining: session.remaining,
-                    size: 70,
-                    lineWidth: 7,
-                    label: "Session (5h)",
-                    resetTime: session.resetClockString,
-                    darkMode: settings.darkMode
-                )
-                .frame(maxWidth: .infinity)
-            }
+            UsageRingView(
+                remaining: service.sessionWindow?.remaining,
+                size: 70,
+                lineWidth: 7,
+                label: "Session (5h)",
+                resetTime: service.sessionWindow?.resetClockString,
+                darkMode: settings.darkMode
+            )
+            .frame(maxWidth: .infinity)
 
-            if let weekly = service.weeklyWindow {
-                UsageRingView(
-                    remaining: weekly.remaining,
-                    size: 70,
-                    lineWidth: 7,
-                    label: "Weekly (7d)",
-                    resetTime: weekly.resetClockString,
-                    darkMode: settings.darkMode
-                )
-                .frame(maxWidth: .infinity)
-            }
+            UsageRingView(
+                remaining: service.weeklyWindow?.remaining,
+                size: 70,
+                lineWidth: 7,
+                label: "Weekly (7d)",
+                resetTime: service.weeklyWindow?.resetClockString,
+                darkMode: settings.darkMode
+            )
+            .frame(maxWidth: .infinity)
         }
         .padding(.vertical, 16)
         .padding(.horizontal, 8)
@@ -290,6 +286,14 @@ struct UsagePopoverView: View {
 
     // MARK: - Footer
 
+    private func friendlyErrorMessage(_ raw: String) -> String {
+        let lower = raw.lowercased()
+        if lower.contains("keychain") || lower.contains("token") || lower.contains("401") {
+            return "Sign in via Claude Code to refresh usage data."
+        }
+        return raw
+    }
+
     private var footerSection: some View {
         VStack(spacing: 8) {
             Divider()
@@ -385,9 +389,9 @@ struct UsagePopoverView: View {
             }
 
             if case .error(let msg) = service.loadState {
-                Text(msg)
+                Text(friendlyErrorMessage(msg))
                     .font(.system(size: 10))
-                    .foregroundColor(Color(hex: "EF4444"))
+                    .foregroundColor(textMuted)
                     .lineLimit(3)
                     .multilineTextAlignment(.center)
             }

@@ -45,7 +45,7 @@ enum MenuBarIconRenderer {
         return raw.uppercased()
     }
 
-    static func renderFull(remaining: Double, resetTime: String?, showLogo: Bool = true) -> NSImage {
+    static func renderFull(remaining: Double?, resetTime: String?, showLogo: Bool = true) -> NSImage {
         let logoSize: CGFloat = 16
         let ringSize: CGFloat = 22
         let gap: CGFloat = 4
@@ -100,7 +100,7 @@ enum MenuBarIconRenderer {
         return image
     }
 
-    static func renderRing(remaining: Double) -> NSImage {
+    static func renderRing(remaining: Double?) -> NSImage {
         let size: CGFloat = 22
         let lineWidth: CGFloat = 2.0
         let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
@@ -112,6 +112,25 @@ enum MenuBarIconRenderer {
             trackPath.lineWidth = lineWidth
             NSColor.gray.withAlphaComponent(0.3).setStroke()
             trackPath.stroke()
+
+            // No data → empty ring with "?" inside.
+            guard let remaining else {
+                let text = "?" as NSString
+                let font = NSFont.systemFont(ofSize: 10, weight: .bold)
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: font,
+                    .foregroundColor: NSColor.white.withAlphaComponent(0.6),
+                ]
+                let textSize = text.size(withAttributes: attrs)
+                text.draw(
+                    in: CGRect(x: center.x - textSize.width / 2,
+                               y: center.y - textSize.height / 2,
+                               width: textSize.width,
+                               height: textSize.height),
+                    withAttributes: attrs
+                )
+                return true
+            }
 
             let color: NSColor
             if remaining > 30 {

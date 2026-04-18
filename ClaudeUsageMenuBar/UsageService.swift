@@ -15,8 +15,7 @@ final class UsageService {
     private let apiURL = URL(string: "https://platform.claude.com/api/oauth/usage")!
 
     init() {
-        Task { await refresh() }
-        startAutoRefresh()
+        Task { await self.refreshAndReschedule() }
     }
 
     // MARK: - Public
@@ -76,8 +75,14 @@ final class UsageService {
             .sorted { $0.label < $1.label }
     }
 
-    var menuBarRemaining: Double {
-        sessionWindow?.remaining ?? 100
+    /// `nil` means no fresh data (e.g. OAuth token expired and we can't reach the API).
+    var menuBarRemaining: Double? {
+        sessionWindow?.remaining
+    }
+
+    /// True once we've successfully fetched API data at least once this session.
+    var hasUsageData: Bool {
+        !windows.isEmpty
     }
 
     // MARK: - Keychain
@@ -356,10 +361,22 @@ final class UsageService {
 
     // MARK: - Timer
 
-    private func startAutoRefresh() {
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            Task { await self.refresh() }
+    /// Runs a refresh, then schedules the next one. Interval is adaptive:
+    /// 15s when we have no data (so we catch up quickly after a re-login),
+    /// 60s once usage data is loaded.
+    private func refreshAndReschedule() async {
+        await refresh()
+        scheduleNextRefresh()
+    }
+
+    private func scheduleNextRefresh() {
+        Task { @MainActor in
+            self.refreshTimer?.invalidate()
+            let interval: TimeInterval = self.hasUsageData ? 60 : 15
+            self.refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+                guard let self else { return }
+                Task { await self.refreshAndReschedule() }
+            }
         }
     }
 
