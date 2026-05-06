@@ -8,8 +8,22 @@ struct ClaudeUsageMenuBarApp: App {
     @State private var settings = AppSettings()
 
     init() {
+        Self.terminateOtherInstances()
         // Auto-register as login item so the app starts on boot
         try? SMAppService.mainApp.register()
+    }
+
+    /// Terminate any other running copies of this app so an upgrade-then-launch
+    /// doesn't leave the previous version sitting in the menu bar.
+    private static func terminateOtherInstances() {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return }
+        let me = NSRunningApplication.current
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        where app != me && app.processIdentifier != me.processIdentifier {
+            if !app.terminate() {
+                app.forceTerminate()
+            }
+        }
     }
 
     var body: some Scene {

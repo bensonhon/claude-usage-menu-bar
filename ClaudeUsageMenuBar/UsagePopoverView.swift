@@ -61,11 +61,19 @@ struct UsagePopoverView: View {
 
     // MARK: - Header
 
+    private var appVersion: String {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        return v.isEmpty ? "" : "v\(v)"
+    }
+
     private var headerSection: some View {
-        HStack {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text("Claude Usage")
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(textPrimary)
+            Text(appVersion)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(textMuted)
             Spacer()
             Text(service.hasUsageData ? service.planName : "—")
                 .font(.system(size: 11, weight: .semibold))
