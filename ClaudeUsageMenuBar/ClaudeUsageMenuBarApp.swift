@@ -4,8 +4,8 @@ import ServiceManagement
 
 @main
 struct ClaudeUsageMenuBarApp: App {
-    @State private var service = UsageService()
-    @State private var settings = AppSettings()
+    @StateObject private var service = UsageService()
+    @StateObject private var settings = AppSettings()
 
     init() {
         Self.terminateOtherInstances()

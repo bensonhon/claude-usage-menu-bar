@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct UsagePopoverView: View {
-    let service: UsageService
-    var settings: AppSettings
+    @ObservedObject var service: UsageService
+    @ObservedObject var settings: AppSettings
 
     @State private var refreshHovered = false
     @State private var quitHovered = false
@@ -233,14 +233,14 @@ struct UsagePopoverView: View {
                 Spacer()
             }
 
-            Toggle(isOn: Bindable(settings).showLogo) {
+            Toggle(isOn: $settings.showLogo) {
                 Text("Show Claude logo")
                     .font(.system(size: 12))
                     .foregroundColor(textPrimary)
             }
             .toggleStyle(.checkbox)
 
-            Toggle(isOn: Bindable(settings).showResetTime) {
+            Toggle(isOn: $settings.showResetTime) {
                 Text("Show reset time")
                     .font(.system(size: 12))
                     .foregroundColor(textPrimary)

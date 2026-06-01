@@ -1,15 +1,14 @@
 import Foundation
 import SwiftUI
 
-@Observable
-final class AppSettings {
-    var showLogo: Bool {
+final class AppSettings: ObservableObject {
+    @Published var showLogo: Bool {
         didSet { UserDefaults.standard.set(showLogo, forKey: "showLogo") }
     }
-    var showResetTime: Bool {
+    @Published var showResetTime: Bool {
         didSet { UserDefaults.standard.set(showResetTime, forKey: "showResetTime") }
     }
-    var darkMode: Bool {
+    @Published var darkMode: Bool {
         didSet { UserDefaults.standard.set(darkMode, forKey: "darkMode") }
     }
 

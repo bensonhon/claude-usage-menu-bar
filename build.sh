@@ -19,7 +19,7 @@ mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
 # Compile
 swiftc -parse-as-library -O \
-    -target arm64-apple-macosx14.0 \
+    -target x86_64-apple-macosx13.0 \
     -sdk "${SDK}" \
     "${PROJECT_DIR}/ClaudeUsageMenuBar/ClaudeUsageMenuBarApp.swift" \
     "${PROJECT_DIR}/ClaudeUsageMenuBar/UsageService.swift" \
@@ -51,11 +51,11 @@ cat > "${CONTENTS}/Info.plist" << 'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.3.2</string>
+    <string>1.3.3</string>
     <key>CFBundleVersion</key>
-    <string>1.3.2</string>
+    <string>1.3.3</string>
     <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
+    <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>CFBundleIconFile</key>

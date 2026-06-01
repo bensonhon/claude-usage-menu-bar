@@ -113,7 +113,7 @@ struct UsageRingView: View {
                 animatedValue = remaining ?? 0
             }
         }
-        .onChange(of: remaining) { _, newValue in
+        .onChange(of: remaining) { newValue in
             withAnimation(.easeOut(duration: 0.5)) {
                 animatedValue = newValue ?? 0
             }

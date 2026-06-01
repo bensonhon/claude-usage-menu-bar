@@ -1,15 +1,14 @@
 import Foundation
 import SwiftUI
 
-@Observable
-final class UsageService {
-    var loadState: UsageLoadState = .idle
-    var windows: [String: UsageWindow] = [:]
-    var extraUsage: ExtraUsage? = nil
-    var tokenActivity: TokenActivity = TokenActivity()
-    var tokenActivityLoaded: Bool = false
-    var lastUpdated: Date? = nil
-    var planName: String = "Pro"
+final class UsageService: ObservableObject {
+    @Published var loadState: UsageLoadState = .idle
+    @Published var windows: [String: UsageWindow] = [:]
+    @Published var extraUsage: ExtraUsage? = nil
+    @Published var tokenActivity: TokenActivity = TokenActivity()
+    @Published var tokenActivityLoaded: Bool = false
+    @Published var lastUpdated: Date? = nil
+    @Published var planName: String = "Pro"
 
     private var refreshTimer: Timer?
     private let apiURL = URL(string: "https://platform.claude.com/api/oauth/usage")!
