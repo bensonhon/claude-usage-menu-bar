@@ -9,6 +9,20 @@ struct UsagePopoverView: View {
 
     private let popoverWidth: CGFloat = 300
 
+    /// Measured height of the popover's content. The MenuBarExtra window adopts
+    /// whatever definite size we give its root view. A ScrollView has no
+    /// intrinsic height, so without an explicit height the window collapses to a
+    /// tiny sliver on macOS versions that honor the degenerate fitting size
+    /// (seen on macOS 26). We measure the content and size the window to it.
+    @State private var contentHeight: CGFloat = 420
+
+    /// Cap the popover to most of the screen height so tall content scrolls
+    /// instead of running past the screen edge.
+    private var maxPopoverHeight: CGFloat {
+        let visibleHeight = NSScreen.main?.visibleFrame.height ?? 900
+        return visibleHeight * 0.85
+    }
+
     private var bgColor: Color {
         settings.darkMode ? Color(hex: "1A1A2E") : Color(hex: "F5F5F7")
     }
@@ -26,34 +40,44 @@ struct UsagePopoverView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 8) {
-                    headerSection
-                    mainRingsSection
-                    secondarySection
-                    extraUsageSection
-                    RecentSessionsView(
-                        sessions: service.tokenActivity.recentSessions,
-                        isLoading: !service.tokenActivityLoaded,
-                        darkMode: settings.darkMode
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 8) {
+                headerSection
+                mainRingsSection
+                secondarySection
+                extraUsageSection
+                RecentSessionsView(
+                    sessions: service.tokenActivity.recentSessions,
+                    isLoading: !service.tokenActivityLoaded,
+                    darkMode: settings.darkMode
+                )
+                TokenHistoryView(
+                    activity: service.tokenActivity,
+                    isLoading: !service.tokenActivityLoaded,
+                    darkMode: settings.darkMode
+                )
+                settingsSection
+                footerSection
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 16)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: ContentHeightPreferenceKey.self,
+                        value: proxy.size.height
                     )
-                    TokenHistoryView(
-                        activity: service.tokenActivity,
-                        isLoading: !service.tokenActivityLoaded,
-                        darkMode: settings.darkMode
-                    )
-                    settingsSection
-                    footerSection
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, 16)
+            )
+        }
+        .frame(width: popoverWidth, height: min(max(contentHeight, 360), maxPopoverHeight))
+        .background(bgColor)
+        .onPreferenceChange(ContentHeightPreferenceKey.self) { newHeight in
+            if newHeight > 0 {
+                contentHeight = newHeight
             }
         }
-        .frame(width: popoverWidth)
-        .frame(maxHeight: 1000)
-        .background(bgColor)
         .task {
             await service.refresh()
         }
@@ -404,5 +428,14 @@ struct UsagePopoverView: View {
                     .multilineTextAlignment(.center)
             }
         }
+    }
+}
+
+/// Carries the popover's measured content height up to the frame modifier so the
+/// MenuBarExtra window can be sized to a definite height instead of collapsing.
+private struct ContentHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
