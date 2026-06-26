@@ -12,7 +12,8 @@ A native macOS menu bar app that displays your Claude Code subscription usage wi
 
 ### Requirements
 
-- macOS 14 (Sonoma) or later
+- macOS 13 (Ventura) or later
+- Universal binary — runs natively on both Apple Silicon and Intel Macs (no Rosetta required)
 - **Claude Code CLI** signed in (OAuth token in Keychain). Claude Desktop users are **not** supported — Desktop's credentials are encrypted separately and its activity doesn't write to `~/.claude/projects/`, so neither usage data nor token history can be read.
 
 ## Features

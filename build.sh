@@ -11,26 +11,51 @@ RESOURCES_DIR="${CONTENTS}/Resources"
 
 SDK="$(xcrun --show-sdk-path)"
 
-echo "==> Building ${APP_NAME}..."
+# Deployment target shared by every architecture slice. arm64 macOS exists
+# only from 11.0 onward, so 13.0 is a valid floor for both slices.
+DEPLOYMENT_TARGET="13.0"
+
+# Architectures compiled into the universal binary. Building both arm64 and
+# x86_64 lets the app run NATIVELY on Apple Silicon (no Rosetta, so it works on
+# macOS 26+ where Rosetta is no longer installed by default) while still
+# running natively on any remaining Intel Macs.
+ARCHS=(arm64 x86_64)
+
+SOURCES=(
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/ClaudeUsageMenuBarApp.swift"
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/UsageService.swift"
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/UsageModels.swift"
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/MenuBarIconView.swift"
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/UsagePopoverView.swift"
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/UsageRingView.swift"
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/TokenHistoryView.swift"
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/RecentSessionsView.swift"
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/Settings.swift"
+)
+
+echo "==> Building ${APP_NAME} (universal: ${ARCHS[*]})..."
 
 # Clean previous build
 rm -rf "${APP_BUNDLE}"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
-# Compile
-swiftc -parse-as-library -O \
-    -target x86_64-apple-macosx13.0 \
-    -sdk "${SDK}" \
-    "${PROJECT_DIR}/ClaudeUsageMenuBar/ClaudeUsageMenuBarApp.swift" \
-    "${PROJECT_DIR}/ClaudeUsageMenuBar/UsageService.swift" \
-    "${PROJECT_DIR}/ClaudeUsageMenuBar/UsageModels.swift" \
-    "${PROJECT_DIR}/ClaudeUsageMenuBar/MenuBarIconView.swift" \
-    "${PROJECT_DIR}/ClaudeUsageMenuBar/UsagePopoverView.swift" \
-    "${PROJECT_DIR}/ClaudeUsageMenuBar/UsageRingView.swift" \
-    "${PROJECT_DIR}/ClaudeUsageMenuBar/TokenHistoryView.swift" \
-    "${PROJECT_DIR}/ClaudeUsageMenuBar/RecentSessionsView.swift" \
-    "${PROJECT_DIR}/ClaudeUsageMenuBar/Settings.swift" \
-    -o "${MACOS_DIR}/${APP_NAME}"
+# swiftc emits a single-architecture binary per invocation, so compile each
+# slice separately, then fuse them into one universal binary with lipo.
+SLICES=()
+for ARCH in "${ARCHS[@]}"; do
+    SLICE="${BUILD_DIR}/${APP_NAME}-${ARCH}"
+    echo "    Compiling ${ARCH} slice..."
+    swiftc -parse-as-library -O \
+        -target "${ARCH}-apple-macosx${DEPLOYMENT_TARGET}" \
+        -sdk "${SDK}" \
+        "${SOURCES[@]}" \
+        -o "${SLICE}"
+    SLICES+=("${SLICE}")
+done
+
+echo "    Fusing slices into universal binary..."
+lipo -create "${SLICES[@]}" -output "${MACOS_DIR}/${APP_NAME}"
+rm -f "${SLICES[@]}"
 
 # Info.plist
 cat > "${CONTENTS}/Info.plist" << 'PLIST'
@@ -51,9 +76,9 @@ cat > "${CONTENTS}/Info.plist" << 'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.3.3</string>
+    <string>1.3.4</string>
     <key>CFBundleVersion</key>
-    <string>1.3.3</string>
+    <string>1.3.4</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>
@@ -77,6 +102,7 @@ codesign --force --sign - "${APP_BUNDLE}" 2>/dev/null || true
 echo ""
 echo "==> Build succeeded!"
 echo "    App: ${APP_BUNDLE}"
+echo "    Architectures: $(lipo -archs "${MACOS_DIR}/${APP_NAME}")"
 
 # Install
 if [ "${1:-}" = "--install" ]; then
