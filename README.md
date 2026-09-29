@@ -5,10 +5,13 @@ A native macOS menu bar app that displays your Claude Code subscription usage wi
 ## Install
 
 1. Download the latest **ClaudeUsageMenuBar-vX.Y.Z.dmg** from [Releases](https://github.com/bensonhon/claude-usage-menu-bar/releases)
-2. Open the DMG
-3. Drag **Claude Usage Monitor** to the **Applications** folder
+2. Open the DMG (the volume is named **Claude Usage Monitor**)
+3. Drag **ClaudeUsageMenuBar** onto the **Applications** shortcut next to it
 4. Eject the DMG
-5. Open the app from Applications — right-click → **Open** the first time (the app is not notarized yet, so Gatekeeper will block a plain double-click)
+5. Open **ClaudeUsageMenuBar** from Applications. The app is not notarized yet, so the first launch is blocked by Gatekeeper. How to allow it depends on your macOS version:
+   - **macOS 15 (Sequoia) and later:** macOS shows *"ClaudeUsageMenuBar" Not Opened*. Click **Done**, then open **System Settings → Privacy & Security**, scroll down to **Security**, and click **Open Anyway** next to *"ClaudeUsageMenuBar" was blocked…*. Confirm the follow-up dialog with **Open Anyway** and your password or Touch ID. Right-click → **Open** no longer bypasses this dialog on macOS 15.
+   - **macOS 13–14:** right-click the app → **Open**, then click **Open** in the dialog.
+   - **Any version, from Terminal:** run `xattr -dr com.apple.quarantine /Applications/ClaudeUsageMenuBar.app` right after step 3, before the first launch. It removes the download quarantine so the app opens normally. (Once Gatekeeper has blocked a launch, macOS may refuse this with "Operation not permitted". Use the System Settings route above instead.)
 
 ### Requirements
 
@@ -46,6 +49,14 @@ sudo mv /Library/Developer/CommandLineTools/usr/include/swift/module.modulemap \
         /Library/Developer/CommandLineTools/usr/include/swift/module.modulemap.bak
 ```
 This is a known Apple Command Line Tools bug.
+
+To package a release DMG (the app plus an Applications shortcut), run:
+
+```bash
+./make-dmg.sh
+```
+
+This runs `build.sh`, checks the code signature, and writes `build/ClaudeUsageMenuBar-vX.Y.Z.dmg`.
 
 ## How It Works
 
