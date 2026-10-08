@@ -1,6 +1,10 @@
 import Foundation
 import SwiftUI
 
+/// Isolated to the main actor so every `@Published` mutation (which drives the
+/// SwiftUI menu bar) happens on the main thread. Blocking helpers below are
+/// `nonisolated` and run off the main thread.
+@MainActor
 final class UsageService: ObservableObject {
     @Published var loadState: UsageLoadState = .idle
     @Published var windows: [String: UsageWindow] = [:]
@@ -86,7 +90,7 @@ final class UsageService: ObservableObject {
 
     // MARK: - Keychain
 
-    private func fetchOAuthToken() throws -> (String, String) {
+    private nonisolated func fetchOAuthToken() throws -> (String, String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         process.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
@@ -127,7 +131,7 @@ final class UsageService: ObservableObject {
 
     // MARK: - API
 
-    private func fetchUsage(token: String) async throws -> UsageResponse {
+    private nonisolated func fetchUsage(token: String) async throws -> UsageResponse {
         var request = URLRequest(url: apiURL)
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -175,7 +179,7 @@ final class UsageService: ObservableObject {
     /// Scans `.jsonl` files modified in the last 10 days concurrently via TaskGroup.
     /// Each message's own timestamp decides which window (today / 3d / 7d) it
     /// contributes to — file mod-date is just a gate to skip old files.
-    private func parseLocalTokenHistory() async -> TokenActivity {
+    private nonisolated func parseLocalTokenHistory() async -> TokenActivity {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         let claudeDir = homeDir.appendingPathComponent(".claude/projects")
         guard FileManager.default.fileExists(atPath: claudeDir.path) else { return TokenActivity() }
@@ -269,7 +273,7 @@ final class UsageService: ObservableObject {
     }
 
     /// Parses a single JSONL file and returns its contribution. Pure / thread-safe.
-    private func parseFile(url: URL, startOfToday: Date, start3Days: Date, start7Days: Date) -> FileParseResult {
+    private nonisolated func parseFile(url: URL, startOfToday: Date, start3Days: Date, start7Days: Date) -> FileParseResult {
         var result = FileParseResult()
         guard let lines = readTailLines(of: url) else { return result }
         var seenIDs = Set<String>()
@@ -336,7 +340,7 @@ final class UsageService: ObservableObject {
     /// Reads up to the last ~128 KB of a JSONL file without loading the whole thing.
     /// Trades a small amount of precision (token totals may miss very long sessions)
     /// for much faster parsing — the recent entries are what we need for display.
-    private func readTailLines(of url: URL, maxBytes: UInt64 = 128 * 1024) -> [String]? {
+    private nonisolated func readTailLines(of url: URL, maxBytes: UInt64 = 128 * 1024) -> [String]? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
 
