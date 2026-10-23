@@ -9,6 +9,9 @@ struct UsageRingView: View {
     let label: String?
     let resetTime: String?
     var darkMode: Bool = true
+    /// Drops the "Reset by" prefix and clock icon and lets the time wrap to a
+    /// second line, for rings laid out three or four across.
+    var compactReset: Bool = false
 
     @State private var animatedValue: Double = 0
 
@@ -28,7 +31,8 @@ struct UsageRingView: View {
         lineWidth: CGFloat = 10,
         label: String? = nil,
         resetTime: String? = nil,
-        darkMode: Bool = true
+        darkMode: Bool = true,
+        compactReset: Bool = false
     ) {
         self.remaining = remaining
         self.size = size
@@ -36,6 +40,7 @@ struct UsageRingView: View {
         self.label = label
         self.resetTime = resetTime
         self.darkMode = darkMode
+        self.compactReset = compactReset
     }
 
     private var ringColor: Color {
@@ -97,15 +102,23 @@ struct UsageRingView: View {
                         .foregroundColor(labelColor)
                 }
 
-                HStack(spacing: 3) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 9))
-                    Text(resetTime.map { "Reset by \($0)" } ?? "---")
+                if compactReset {
+                    Text(resetTime ?? "---")
                         .font(.system(size: 10))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .foregroundColor(mutedColor)
+                } else {
+                    HStack(spacing: 3) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 9))
+                        Text(resetTime.map { "Reset by \($0)" } ?? "---")
+                            .font(.system(size: 10))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .foregroundColor(mutedColor)
                 }
-                .foregroundColor(mutedColor)
             }
         }
         .onAppear {
@@ -129,8 +142,6 @@ struct UsageProgressBar: View {
     let remaining: Double
     let resetTime: String
     var darkMode: Bool = true
-    /// Account color dot drawn before the label; `nil` draws no dot.
-    var dotColor: Color? = nil
 
     private var labelColor: Color {
         darkMode ? Color(hex: "CCCCCC") : Color(hex: "444444")
@@ -157,16 +168,10 @@ struct UsageProgressBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                if let dotColor {
-                    Circle()
-                        .fill(dotColor)
-                        .frame(width: 7, height: 7)
-                }
+            HStack {
                 Text(label)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(labelColor)
-                    .lineLimit(1)
                 Spacer()
                 Text("\(Int(remaining))% left")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))

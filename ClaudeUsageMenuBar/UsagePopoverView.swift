@@ -178,59 +178,64 @@ struct UsagePopoverView: View {
 
     // MARK: - Simple Account List
 
-    /// One compact weekly-usage block per shown account, in Settings order.
+    /// Weekly rings side by side, one column per shown account in Settings
+    /// order, with any login problems listed under the rings.
     private var simpleAccountList: some View {
-        VStack(spacing: 8) {
+        let ringSize: CGFloat = shownAccounts.count > 3 ? 48 : (shownAccounts.count > 2 ? 58 : 70)
+        let isCompact = shownAccounts.count > 2
+        return VStack(spacing: 8) {
             HStack {
                 Text("Weekly (7d)")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(textMuted)
                 Spacer()
             }
-            ForEach(shownAccounts) { account in
-                simpleAccountBlock(account, usage: service.usage(for: account))
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(shownAccounts) { account in
+                    simpleAccountColumn(account, usage: service.usage(for: account), ringSize: ringSize, isCompact: isCompact)
+                }
             }
-        }
-    }
-
-    private func simpleAccountBlock(_ account: ClaudeAccount, usage: AccountUsage) -> some View {
-        VStack(spacing: 6) {
-            if let weekly = usage.weeklyWindow {
-                UsageProgressBar(
-                    label: account.labelOrFolderName,
-                    utilization: weekly.utilization,
-                    remaining: weekly.remaining,
-                    resetTime: weekly.resetClockString,
-                    darkMode: settings.darkMode,
+            .padding(.vertical, 12)
+            .padding(.horizontal, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(cardColor)
+            )
+            ForEach(shownAccounts) { account in
+                loginProblemNote(
+                    service.usage(for: account).keychainLoginStatus,
+                    accountLabel: account.labelOrFolderName,
                     dotColor: AccountColor.color(position: accountStore.position(of: account))
                 )
-            } else {
-                simpleAccountBlockWithoutData(account)
             }
-            loginProblemNote(usage.keychainLoginStatus)
         }
     }
 
-    private func simpleAccountBlockWithoutData(_ account: ClaudeAccount) -> some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(AccountColor.color(position: accountStore.position(of: account)))
-                .frame(width: 7, height: 7)
-            Text(account.labelOrFolderName)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(textSecondary)
-                .lineLimit(1)
-            Spacer()
-            Text("?")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundColor(textMuted)
+    private func simpleAccountColumn(_ account: ClaudeAccount, usage: AccountUsage, ringSize: CGFloat, isCompact: Bool) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(AccountColor.color(position: accountStore.position(of: account)))
+                    .frame(width: 7, height: 7)
+                Text(account.labelOrFolderName)
+                    .font(.system(size: isCompact ? 11 : 12, weight: .semibold))
+                    .foregroundColor(textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .padding(.horizontal, 2)
+            UsageRingView(
+                remaining: usage.weeklyWindow?.remaining,
+                size: ringSize,
+                lineWidth: ringSize > 60 ? 7 : 6,
+                label: nil,
+                resetTime: usage.weeklyWindow?.resetClockString,
+                darkMode: settings.darkMode,
+                compactReset: isCompact
+            )
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(cardColor)
-        )
+        .padding(.horizontal, 3)
+        .frame(maxWidth: .infinity)
     }
 
     private var noAccountShownSection: some View {
@@ -289,31 +294,44 @@ struct UsagePopoverView: View {
     }
 
     @ViewBuilder
-    private func loginProblemNote(_ keychainLoginStatus: KeychainLoginStatus) -> some View {
+    private func loginProblemNote(
+        _ keychainLoginStatus: KeychainLoginStatus,
+        accountLabel: String? = nil,
+        dotColor: Color? = nil
+    ) -> some View {
         switch keychainLoginStatus {
         case .tokenExpired:
-            loginProblemText("Login token expired. Use Claude Code with this account once, and it comes back on the next refresh.")
+            loginProblemText("Login token expired. Use Claude Code with this account once, and it comes back on the next refresh.", accountLabel: accountLabel, dotColor: dotColor)
         case .notFound:
-            loginProblemText("No Claude Code login found for this folder. Sign in to Claude Code with this config folder.")
+            loginProblemText("No Claude Code login found for this folder. Sign in to Claude Code with this config folder.", accountLabel: accountLabel, dotColor: dotColor)
         case .unreadable:
-            loginProblemText("Could not read this account's login from Keychain.")
+            loginProblemText("Could not read this account's login from Keychain.", accountLabel: accountLabel, dotColor: dotColor)
         case .notChecked, .found:
             EmptyView()
         }
     }
 
-    private func loginProblemText(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 11))
-            .foregroundColor(textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(hex: "F59E0B").opacity(0.14))
-            )
+    /// `accountLabel` and `dotColor` name the account when several notes share
+    /// one list; the single-account views leave them off.
+    private func loginProblemText(_ text: String, accountLabel: String?, dotColor: Color?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if let dotColor {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 7, height: 7)
+            }
+            Text(accountLabel.map { "\($0): \(text)" } ?? text)
+        }
+        .font(.system(size: 11))
+        .foregroundColor(textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(hex: "F59E0B").opacity(0.14))
+        )
     }
 
     private func mainRingsSection(_ usage: AccountUsage) -> some View {
