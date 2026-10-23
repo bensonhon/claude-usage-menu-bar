@@ -2,17 +2,19 @@ import Foundation
 import Combine
 
 // Regression check: every @Published change on UsageService must be published
-// on the main thread, because SwiftUI rebuilds the menu bar in response. The
-// first change is `loadState = .loading` at the top of refresh(), before any
-// keychain or network access, so the check exits right there.
+// on the main thread, because SwiftUI rebuilds the menu bar in response.
 //
 // Run with Tests/check-main-thread.sh.
 
 var cancellable: AnyCancellable?
+let testDefaultsSuiteName = "ClaudeUsageMenuBar.MainThreadCheck"
+UserDefaults.standard.removePersistentDomain(forName: testDefaultsSuiteName)
 
 Task { @MainActor in
-    let service = UsageService()
+    let accountStore = AccountStore(userDefaults: UserDefaults(suiteName: testDefaultsSuiteName)!)
+    let service = UsageService(accountStore: accountStore)
     cancellable = service.objectWillChange.sink { _ in
+        UserDefaults.standard.removePersistentDomain(forName: testDefaultsSuiteName)
         if Thread.isMainThread {
             print("PASS: first @Published change was published on the main thread")
             exit(0)

@@ -210,6 +210,54 @@ enum UsageLoadState {
     case error(String)
 }
 
+enum KeychainLoginStatus: Equatable {
+    case notChecked
+    case found
+    case tokenExpired
+    case notFound
+    case unreadable
+
+    var isLoginProblem: Bool {
+        switch self {
+        case .tokenExpired, .notFound, .unreadable:
+            return true
+        case .notChecked, .found:
+            return false
+        }
+    }
+}
+
+struct AccountUsage {
+    var loadState: UsageLoadState = .idle
+    var keychainLoginStatus: KeychainLoginStatus = .notChecked
+    var windows: [String: UsageWindow] = [:]
+    var extraUsage: ExtraUsage? = nil
+    var tokenActivity: TokenActivity = TokenActivity()
+    var tokenActivityLoaded: Bool = false
+    var lastUpdated: Date? = nil
+    var planName: String = "Pro"
+
+    var sessionWindow: UsageWindow? {
+        windows["five_hour"]
+    }
+
+    var weeklyWindow: UsageWindow? {
+        windows["seven_day"]
+    }
+
+    var secondaryWindows: [WindowDisplayInfo] {
+        let primaryKeys: Set<String> = ["five_hour", "seven_day"]
+        return windows
+            .filter { !primaryKeys.contains($0.key) }
+            .map { WindowDisplayInfo(key: $0.key, window: $0.value) }
+            .sorted { $0.label < $1.label }
+    }
+
+    var hasUsageData: Bool {
+        !windows.isEmpty
+    }
+}
+
 // MARK: - Window Display Info
 
 struct WindowDisplayInfo: Identifiable {

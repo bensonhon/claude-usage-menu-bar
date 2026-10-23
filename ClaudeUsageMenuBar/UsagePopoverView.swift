@@ -2,7 +2,10 @@ import SwiftUI
 
 struct UsagePopoverView: View {
     @ObservedObject var service: UsageService
+    @ObservedObject var accountStore: AccountStore
     @ObservedObject var settings: AppSettings
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var refreshHovered = false
     @State private var quitHovered = false
@@ -39,23 +42,41 @@ struct UsagePopoverView: View {
         settings.darkMode ? Color(hex: "999999") : Color(hex: "666666")
     }
 
+    private var shownAccounts: [ClaudeAccount] {
+        accountStore.shownAccounts
+    }
+
+    private var selectedAccount: ClaudeAccount? {
+        shownAccounts.first { $0.configFolderPath == settings.selectedConfigFolderPath } ?? shownAccounts.first
+    }
+
+    private var selectedUsage: AccountUsage {
+        selectedAccount.map(service.usage(for:)) ?? AccountUsage()
+    }
+
+    private var isAccountColorShown: Bool {
+        shownAccounts.count > 1
+    }
+
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 8) {
                 headerSection
-                mainRingsSection
-                secondarySection
-                extraUsageSection
-                RecentSessionsView(
-                    sessions: service.tokenActivity.recentSessions,
-                    isLoading: !service.tokenActivityLoaded,
-                    darkMode: settings.darkMode
-                )
-                TokenHistoryView(
-                    activity: service.tokenActivity,
-                    isLoading: !service.tokenActivityLoaded,
-                    darkMode: settings.darkMode
-                )
+                if isAccountColorShown {
+                    AccountTabsView(
+                        tabs: accountTabs,
+                        selectedConfigFolderPath: selectedAccount?.configFolderPath,
+                        darkMode: settings.darkMode,
+                        onSelect: selectAccount
+                    )
+                }
+                if let selectedAccount {
+                    selectedAccountSection(selectedAccount)
+                        .id(selectedAccount.configFolderPath)
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .trailing)))
+                } else {
+                    noAccountShownSection
+                }
                 settingsSection
                 footerSection
             }
@@ -99,43 +120,98 @@ struct UsagePopoverView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(textMuted)
             Spacer()
-            Text(service.hasUsageData ? service.planName : "—")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(service.hasUsageData ? Color(hex: "E8732A") : textMuted)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule()
-                        .fill((service.hasUsageData ? Color(hex: "E8732A") : textMuted).opacity(0.15))
-                )
         }
+    }
+
+    private var accountTabs: [AccountTab] {
+        shownAccounts.map { account in
+            AccountTab(
+                configFolderPath: account.configFolderPath,
+                label: account.labelOrFolderName,
+                color: AccountColor.color(position: accountStore.position(of: account)),
+                sessionRemaining: service.usage(for: account).sessionWindow?.remaining
+            )
+        }
+    }
+
+    private func selectAccount(_ configFolderPath: String) {
+        if reduceMotion {
+            settings.selectedConfigFolderPath = configFolderPath
+        } else {
+            withAnimation(.easeOut(duration: 0.25)) {
+                settings.selectedConfigFolderPath = configFolderPath
+            }
+        }
+    }
+
+    private func selectedAccountSection(_ account: ClaudeAccount) -> some View {
+        let usage = service.usage(for: account)
+        return VStack(spacing: 8) {
+            accountCard(account, usage: usage)
+            loginProblemNote(usage.keychainLoginStatus)
+            secondarySection(usage)
+            extraUsageSection(usage)
+            RecentSessionsView(
+                sessions: usage.tokenActivity.recentSessions,
+                isLoading: !usage.tokenActivityLoaded,
+                darkMode: settings.darkMode
+            )
+            TokenHistoryView(
+                activity: usage.tokenActivity,
+                isLoading: !usage.tokenActivityLoaded,
+                darkMode: settings.darkMode
+            )
+        }
+    }
+
+    private var noAccountShownSection: some View {
+        Text("No accounts shown. Turn one on under Accounts.")
+            .font(.system(size: 12))
+            .foregroundColor(textMuted)
+            .frame(maxWidth: .infinity)
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(cardColor)
+            )
     }
 
     // MARK: - Main Rings
 
-    private var mainRingsSection: some View {
-        HStack(spacing: 20) {
-            UsageRingView(
-                remaining: service.sessionWindow?.remaining,
-                size: 70,
-                lineWidth: 7,
-                label: "Session (5h)",
-                resetTime: service.sessionWindow?.resetClockString,
-                darkMode: settings.darkMode
-            )
-            .frame(maxWidth: .infinity)
-
-            UsageRingView(
-                remaining: service.weeklyWindow?.remaining,
-                size: 70,
-                lineWidth: 7,
-                label: "Weekly (7d)",
-                resetTime: service.weeklyWindow?.resetClockString,
-                darkMode: settings.darkMode
-            )
-            .frame(maxWidth: .infinity)
+    private func accountCard(_ account: ClaudeAccount, usage: AccountUsage) -> some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .center, spacing: 6) {
+                if isAccountColorShown {
+                    Circle()
+                        .fill(AccountColor.color(position: accountStore.position(of: account)))
+                        .frame(width: 7, height: 7)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(account.labelOrFolderName)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(textPrimary)
+                        .lineLimit(1)
+                    Text(account.displayPath)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer()
+                Text(usage.hasUsageData ? usage.planName : "—")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(usage.hasUsageData ? Color(hex: "E8732A") : textMuted)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill((usage.hasUsageData ? Color(hex: "E8732A") : textMuted).opacity(0.15))
+                    )
+            }
+            .padding(.horizontal, 4)
+            mainRingsSection(usage)
         }
-        .padding(.vertical, 16)
+        .padding(.top, 12)
         .padding(.horizontal, 8)
         .background(
             RoundedRectangle(cornerRadius: 14)
@@ -143,11 +219,64 @@ struct UsagePopoverView: View {
         )
     }
 
+    @ViewBuilder
+    private func loginProblemNote(_ keychainLoginStatus: KeychainLoginStatus) -> some View {
+        switch keychainLoginStatus {
+        case .tokenExpired:
+            loginProblemText("Login token expired. Use Claude Code with this account once, and it comes back on the next refresh.")
+        case .notFound:
+            loginProblemText("No Claude Code login found for this folder. Sign in to Claude Code with this config folder.")
+        case .unreadable:
+            loginProblemText("Could not read this account's login from Keychain.")
+        case .notChecked, .found:
+            EmptyView()
+        }
+    }
+
+    private func loginProblemText(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11))
+            .foregroundColor(textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(hex: "F59E0B").opacity(0.14))
+            )
+    }
+
+    private func mainRingsSection(_ usage: AccountUsage) -> some View {
+        HStack(spacing: 20) {
+            UsageRingView(
+                remaining: usage.sessionWindow?.remaining,
+                size: 70,
+                lineWidth: 7,
+                label: "Session (5h)",
+                resetTime: usage.sessionWindow?.resetClockString,
+                darkMode: settings.darkMode
+            )
+            .frame(maxWidth: .infinity)
+
+            UsageRingView(
+                remaining: usage.weeklyWindow?.remaining,
+                size: 70,
+                lineWidth: 7,
+                label: "Weekly (7d)",
+                resetTime: usage.weeklyWindow?.resetClockString,
+                darkMode: settings.darkMode
+            )
+            .frame(maxWidth: .infinity)
+        }
+        .padding(.bottom, 16)
+    }
+
     // MARK: - Secondary Windows
 
     @ViewBuilder
-    private var secondarySection: some View {
-        let items = service.secondaryWindows
+    private func secondarySection(_ usage: AccountUsage) -> some View {
+        let items = usage.secondaryWindows
         if !items.isEmpty {
             VStack(spacing: 8) {
                 HStack {
@@ -176,8 +305,8 @@ struct UsagePopoverView: View {
     // MARK: - Extra Usage
 
     @ViewBuilder
-    private var extraUsageSection: some View {
-        if let extra = service.extraUsage, extra.isEnabled {
+    private func extraUsageSection(_ usage: AccountUsage) -> some View {
+        if let extra = usage.extraUsage, extra.isEnabled {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Image(systemName: "dollarsign.circle.fill")
@@ -274,6 +403,11 @@ struct UsagePopoverView: View {
             Divider()
                 .background(cardColor)
 
+            AccountListView(accountStore: accountStore, service: service, darkMode: settings.darkMode)
+
+            Divider()
+                .background(cardColor)
+
             HStack {
                 Text("Appearance")
                     .font(.system(size: 12))
@@ -332,7 +466,7 @@ struct UsagePopoverView: View {
                 .background(cardColor)
 
             HStack {
-                if let lastUpdated = service.lastUpdated {
+                if let lastUpdated = selectedUsage.lastUpdated {
                     Text("Updated \(lastUpdated, style: .relative) ago")
                         .font(.system(size: 10))
                         .foregroundColor(textMuted)
@@ -420,7 +554,7 @@ struct UsagePopoverView: View {
                 }
             }
 
-            if case .error(let msg) = service.loadState {
+            if case .error(let msg) = selectedUsage.loadState, !selectedUsage.keychainLoginStatus.isLoginProblem {
                 Text(friendlyErrorMessage(msg))
                     .font(.system(size: 10))
                     .foregroundColor(textMuted)

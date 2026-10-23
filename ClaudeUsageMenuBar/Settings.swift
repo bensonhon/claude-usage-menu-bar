@@ -11,6 +11,9 @@ final class AppSettings: ObservableObject {
     @Published var darkMode: Bool {
         didSet { UserDefaults.standard.set(darkMode, forKey: "darkMode") }
     }
+    @Published var selectedConfigFolderPath: String? {
+        didSet { UserDefaults.standard.set(selectedConfigFolderPath, forKey: "selectedConfigFolderPath") }
+    }
 
     init() {
         if UserDefaults.standard.object(forKey: "showLogo") == nil {
@@ -25,5 +28,6 @@ final class AppSettings: ObservableObject {
         self.showLogo = UserDefaults.standard.bool(forKey: "showLogo")
         self.showResetTime = UserDefaults.standard.bool(forKey: "showResetTime")
         self.darkMode = UserDefaults.standard.bool(forKey: "darkMode")
+        self.selectedConfigFolderPath = UserDefaults.standard.string(forKey: "selectedConfigFolderPath")
     }
 }
