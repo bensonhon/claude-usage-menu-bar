@@ -29,26 +29,50 @@ enum MenuBarIconRenderer {
         return raw.uppercased()
     }
 
+    private static let timeAttrs: [NSAttributedString.Key: Any] = [
+        .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+        .foregroundColor: NSColor.white,
+    ]
+
+    private static func timeText(of ring: MenuBarAccountRing) -> String {
+        guard let resetTime = ring.resetTime, resetTime != "—" else { return "" }
+        return resetTime
+    }
+
+    private static func accountWidth(of ring: MenuBarAccountRing) -> CGFloat {
+        let text = timeText(of: ring)
+        guard !text.isEmpty else { return ringSize }
+        return ringSize + gapInsideAccount + (text as NSString).size(withAttributes: timeAttrs).width
+    }
+
+    private static func logoSectionWidth(accountRings: [MenuBarAccountRing], showLogo: Bool) -> CGFloat {
+        guard showLogo || accountRings.isEmpty else { return 0 }
+        return logoSize + (accountRings.isEmpty ? 0 : gapInsideAccount)
+    }
+
+    /// Index of the account whose ring (or reset time) sits at `x`, measured from
+    /// the left edge of the image `renderFull` draws. Nil over the logo or a gap.
+    static func accountIndex(atX x: CGFloat, accountRings: [MenuBarAccountRing], showLogo: Bool = true) -> Int? {
+        var accountStartX = logoSectionWidth(accountRings: accountRings, showLogo: showLogo)
+        for (index, ring) in accountRings.enumerated() {
+            let accountEndX = accountStartX + accountWidth(of: ring)
+            if x >= accountStartX && x < accountEndX {
+                return index
+            }
+            accountStartX = accountEndX + gapBetweenAccounts
+        }
+        return nil
+    }
+
     static func renderFull(accountRings: [MenuBarAccountRing], showLogo: Bool = true) -> NSImage {
         let isLogoDrawn = showLogo || accountRings.isEmpty
         let height: CGFloat = 22
 
-        let timeFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        let timeAttrs: [NSAttributedString.Key: Any] = [
-            .font: timeFont,
-            .foregroundColor: NSColor.white,
-        ]
-        let timeTexts = accountRings.map { ring -> String in
-            guard let resetTime = ring.resetTime, resetTime != "—" else { return "" }
-            return resetTime
-        }
+        let timeTexts = accountRings.map(timeText(of:))
         let timeSizes = timeTexts.map { ($0 as NSString).size(withAttributes: timeAttrs) }
-        let accountWidths = zip(timeTexts, timeSizes).map { timeText, timeSize in
-            ringSize + (timeText.isEmpty ? 0 : gapInsideAccount + timeSize.width)
-        }
-        let logoWidth = isLogoDrawn ? logoSize + (accountRings.isEmpty ? 0 : gapInsideAccount) : 0
+        let logoWidth = logoSectionWidth(accountRings: accountRings, showLogo: showLogo)
         let totalWidth = logoWidth
-            + accountWidths.reduce(0, +)
+            + accountRings.map(accountWidth(of:)).reduce(0, +)
             + gapBetweenAccounts * CGFloat(max(accountRings.count - 1, 0))
 
         let image = NSImage(size: NSSize(width: totalWidth, height: height), flipped: false) { _ in

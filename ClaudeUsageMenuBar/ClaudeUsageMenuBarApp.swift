@@ -6,7 +6,8 @@ import ServiceManagement
 struct ClaudeUsageMenuBarApp: App {
     @StateObject private var accountStore: AccountStore
     @StateObject private var service: UsageService
-    @StateObject private var settings = AppSettings()
+    @StateObject private var settings: AppSettings
+    private let ringClickMonitor: MenuBarRingClickMonitor
 
     init() {
         Self.terminateOtherInstances()
@@ -14,7 +15,19 @@ struct ClaudeUsageMenuBarApp: App {
         try? SMAppService.mainApp.register()
         let accountStore = AccountStore()
         _accountStore = StateObject(wrappedValue: accountStore)
-        _service = StateObject(wrappedValue: UsageService(accountStore: accountStore))
+        let service = UsageService(accountStore: accountStore)
+        _service = StateObject(wrappedValue: service)
+        let settings = AppSettings()
+        _settings = StateObject(wrappedValue: settings)
+        ringClickMonitor = MenuBarRingClickMonitor(
+            accountRings: { Self.menuBarAccountRings(accountStore: accountStore, service: service, settings: settings) },
+            showLogo: { settings.showLogo },
+            onRingClicked: { index in
+                let shownAccounts = accountStore.shownAccounts
+                guard shownAccounts.count > 1, shownAccounts.indices.contains(index) else { return }
+                settings.selectedConfigFolderPath = shownAccounts[index].configFolderPath
+            }
+        )
     }
 
     /// Terminate any other running copies of this app so an upgrade-then-launch
@@ -35,14 +48,14 @@ struct ClaudeUsageMenuBarApp: App {
             UsagePopoverView(service: service, accountStore: accountStore, settings: settings)
         } label: {
             Image(nsImage: MenuBarIconRenderer.renderFull(
-                accountRings: menuBarAccountRings,
+                accountRings: Self.menuBarAccountRings(accountStore: accountStore, service: service, settings: settings),
                 showLogo: settings.showLogo
             ))
         }
         .menuBarExtraStyle(.window)
     }
 
-    private var menuBarAccountRings: [MenuBarAccountRing] {
+    private static func menuBarAccountRings(accountStore: AccountStore, service: UsageService, settings: AppSettings) -> [MenuBarAccountRing] {
         let shownAccounts = accountStore.shownAccounts
         let isAccountColorShown = shownAccounts.count > 1
         return shownAccounts.map { account in

@@ -78,6 +78,29 @@ let oneRingImage = MenuBarIconRenderer.renderFull(
 )
 check(oneRingImage.size.width == 22, "a reset time of — is not drawn")
 
+let ringsWithTimes = [
+    MenuBarAccountRing(remaining: 72, resetTime: "4PM", accountColor: .blue),
+    MenuBarAccountRing(remaining: 15, resetTime: nil, accountColor: .purple),
+    MenuBarAccountRing(remaining: 40, resetTime: "7PM", accountColor: .green),
+]
+let firstAccountWidth = 22 + 4 + ("4PM" as NSString).size(withAttributes: [
+    .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+]).width
+func clickedAccountIndex(atX x: CGFloat, showLogo: Bool) -> Int? {
+    MenuBarIconRenderer.accountIndex(atX: x, accountRings: ringsWithTimes, showLogo: showLogo)
+}
+check(clickedAccountIndex(atX: 5, showLogo: false) == 0, "a click on the first ring picks the first account")
+check(clickedAccountIndex(atX: 21.5, showLogo: false) == 0, "the first ring reaches its right edge")
+check(clickedAccountIndex(atX: 22 + 4 + 2, showLogo: false) == 0, "a click on an account's reset time picks that account")
+check(clickedAccountIndex(atX: firstAccountWidth + 3, showLogo: false) == nil, "a click in the gap between accounts picks nothing")
+check(clickedAccountIndex(atX: firstAccountWidth + 6 + 10, showLogo: false) == 1, "a click on the second ring picks the second account")
+check(clickedAccountIndex(atX: firstAccountWidth + 6 + 22 + 6 + 10, showLogo: false) == 2, "a click on the third ring picks the third account")
+check(clickedAccountIndex(atX: 500, showLogo: false) == nil, "a click past the last account picks nothing")
+check(clickedAccountIndex(atX: -1, showLogo: false) == nil, "a click left of the image picks nothing")
+check(clickedAccountIndex(atX: 8, showLogo: true) == nil, "a click on the logo picks nothing")
+check(clickedAccountIndex(atX: 16 + 4 + 10, showLogo: true) == 0, "with the logo shown the first ring starts after it")
+check(MenuBarIconRenderer.accountIndex(atX: 5, accountRings: [], showLogo: true) == nil, "with no account shown a click picks nothing")
+
 Task { @MainActor in
     let testDefaultsSuiteName = "ClaudeUsageMenuBar.AccountChecks"
     UserDefaults.standard.removePersistentDomain(forName: testDefaultsSuiteName)
