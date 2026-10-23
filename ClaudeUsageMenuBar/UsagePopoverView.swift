@@ -58,24 +58,36 @@ struct UsagePopoverView: View {
         shownAccounts.count > 1
     }
 
+    private var accountContent: PopoverAccountContent {
+        PopoverAccountContent.choose(
+            multiAccountSimpleMode: settings.multiAccountSimpleMode,
+            shownAccountCount: shownAccounts.count
+        )
+    }
+
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 8) {
                 headerSection
-                if isAccountColorShown {
-                    AccountTabsView(
-                        tabs: accountTabs,
-                        selectedConfigFolderPath: selectedAccount?.configFolderPath,
-                        darkMode: settings.darkMode,
-                        onSelect: selectAccount
-                    )
-                }
-                if let selectedAccount {
-                    selectedAccountSection(selectedAccount)
-                        .id(selectedAccount.configFolderPath)
-                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .trailing)))
-                } else {
-                    noAccountShownSection
+                switch accountContent {
+                case .simpleList:
+                    simpleAccountList
+                case .standard:
+                    if isAccountColorShown {
+                        AccountTabsView(
+                            tabs: accountTabs,
+                            selectedConfigFolderPath: selectedAccount?.configFolderPath,
+                            darkMode: settings.darkMode,
+                            onSelect: selectAccount
+                        )
+                    }
+                    if let selectedAccount {
+                        selectedAccountSection(selectedAccount)
+                            .id(selectedAccount.configFolderPath)
+                            .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .trailing)))
+                    } else {
+                        noAccountShownSection
+                    }
                 }
                 settingsSection
                 footerSection
@@ -162,6 +174,63 @@ struct UsagePopoverView: View {
                 darkMode: settings.darkMode
             )
         }
+    }
+
+    // MARK: - Simple Account List
+
+    /// One compact weekly-usage block per shown account, in Settings order.
+    private var simpleAccountList: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text("Weekly (7d)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(textMuted)
+                Spacer()
+            }
+            ForEach(shownAccounts) { account in
+                simpleAccountBlock(account, usage: service.usage(for: account))
+            }
+        }
+    }
+
+    private func simpleAccountBlock(_ account: ClaudeAccount, usage: AccountUsage) -> some View {
+        VStack(spacing: 6) {
+            if let weekly = usage.weeklyWindow {
+                UsageProgressBar(
+                    label: account.labelOrFolderName,
+                    utilization: weekly.utilization,
+                    remaining: weekly.remaining,
+                    resetTime: weekly.resetClockString,
+                    darkMode: settings.darkMode,
+                    dotColor: AccountColor.color(position: accountStore.position(of: account))
+                )
+            } else {
+                simpleAccountBlockWithoutData(account)
+            }
+            loginProblemNote(usage.keychainLoginStatus)
+        }
+    }
+
+    private func simpleAccountBlockWithoutData(_ account: ClaudeAccount) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(AccountColor.color(position: accountStore.position(of: account)))
+                .frame(width: 7, height: 7)
+            Text(account.labelOrFolderName)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(textSecondary)
+                .lineLimit(1)
+            Spacer()
+            Text("?")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(textMuted)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(cardColor)
+        )
     }
 
     private var noAccountShownSection: some View {
@@ -405,6 +474,13 @@ struct UsagePopoverView: View {
 
             AccountListView(accountStore: accountStore, service: service, darkMode: settings.darkMode)
 
+            Toggle(isOn: $settings.multiAccountSimpleMode) {
+                Text("Multiple account simple mode")
+                    .font(.system(size: 12))
+                    .foregroundColor(textPrimary)
+            }
+            .toggleStyle(.checkbox)
+
             Divider()
                 .background(cardColor)
 
@@ -460,13 +536,23 @@ struct UsagePopoverView: View {
         return raw
     }
 
+    /// In the simple list no account is selected, so show the freshest refresh.
+    private var footerLastUpdated: Date? {
+        switch accountContent {
+        case .simpleList:
+            return shownAccounts.compactMap { service.usage(for: $0).lastUpdated }.max()
+        case .standard:
+            return selectedUsage.lastUpdated
+        }
+    }
+
     private var footerSection: some View {
         VStack(spacing: 8) {
             Divider()
                 .background(cardColor)
 
             HStack {
-                if let lastUpdated = selectedUsage.lastUpdated {
+                if let lastUpdated = footerLastUpdated {
                     Text("Updated \(lastUpdated, style: .relative) ago")
                         .font(.system(size: 10))
                         .foregroundColor(textMuted)
@@ -554,7 +640,8 @@ struct UsagePopoverView: View {
                 }
             }
 
-            if case .error(let msg) = selectedUsage.loadState, !selectedUsage.keychainLoginStatus.isLoginProblem {
+            if accountContent == .standard,
+               case .error(let msg) = selectedUsage.loadState, !selectedUsage.keychainLoginStatus.isLoginProblem {
                 Text(friendlyErrorMessage(msg))
                     .font(.system(size: 10))
                     .foregroundColor(textMuted)

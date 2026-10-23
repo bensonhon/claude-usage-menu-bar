@@ -3,31 +3,50 @@ import SwiftUI
 
 final class AppSettings: ObservableObject {
     @Published var showLogo: Bool {
-        didSet { UserDefaults.standard.set(showLogo, forKey: "showLogo") }
+        didSet { userDefaults.set(showLogo, forKey: "showLogo") }
     }
     @Published var showResetTime: Bool {
-        didSet { UserDefaults.standard.set(showResetTime, forKey: "showResetTime") }
+        didSet { userDefaults.set(showResetTime, forKey: "showResetTime") }
     }
     @Published var darkMode: Bool {
-        didSet { UserDefaults.standard.set(darkMode, forKey: "darkMode") }
+        didSet { userDefaults.set(darkMode, forKey: "darkMode") }
     }
     @Published var selectedConfigFolderPath: String? {
-        didSet { UserDefaults.standard.set(selectedConfigFolderPath, forKey: "selectedConfigFolderPath") }
+        didSet { userDefaults.set(selectedConfigFolderPath, forKey: "selectedConfigFolderPath") }
+    }
+    @Published var multiAccountSimpleMode: Bool {
+        didSet { userDefaults.set(multiAccountSimpleMode, forKey: "multiAccountSimpleMode") }
     }
 
-    init() {
-        if UserDefaults.standard.object(forKey: "showLogo") == nil {
-            UserDefaults.standard.set(true, forKey: "showLogo")
+    private let userDefaults: UserDefaults
+
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+        if userDefaults.object(forKey: "showLogo") == nil {
+            userDefaults.set(true, forKey: "showLogo")
         }
-        if UserDefaults.standard.object(forKey: "showResetTime") == nil {
-            UserDefaults.standard.set(true, forKey: "showResetTime")
+        if userDefaults.object(forKey: "showResetTime") == nil {
+            userDefaults.set(true, forKey: "showResetTime")
         }
-        if UserDefaults.standard.object(forKey: "darkMode") == nil {
-            UserDefaults.standard.set(true, forKey: "darkMode")
+        if userDefaults.object(forKey: "darkMode") == nil {
+            userDefaults.set(true, forKey: "darkMode")
         }
-        self.showLogo = UserDefaults.standard.bool(forKey: "showLogo")
-        self.showResetTime = UserDefaults.standard.bool(forKey: "showResetTime")
-        self.darkMode = UserDefaults.standard.bool(forKey: "darkMode")
-        self.selectedConfigFolderPath = UserDefaults.standard.string(forKey: "selectedConfigFolderPath")
+        self.showLogo = userDefaults.bool(forKey: "showLogo")
+        self.showResetTime = userDefaults.bool(forKey: "showResetTime")
+        self.darkMode = userDefaults.bool(forKey: "darkMode")
+        self.selectedConfigFolderPath = userDefaults.string(forKey: "selectedConfigFolderPath")
+        self.multiAccountSimpleMode = userDefaults.bool(forKey: "multiAccountSimpleMode")
+    }
+}
+
+/// Which account content the popover shows above its settings and footer.
+enum PopoverAccountContent: Equatable {
+    /// Account tabs, or the single account's full detail.
+    case standard
+    /// One compact weekly-usage block per shown account, no tabs.
+    case simpleList
+
+    static func choose(multiAccountSimpleMode: Bool, shownAccountCount: Int) -> PopoverAccountContent {
+        multiAccountSimpleMode && shownAccountCount > 1 ? .simpleList : .standard
     }
 }

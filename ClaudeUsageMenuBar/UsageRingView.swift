@@ -129,6 +129,8 @@ struct UsageProgressBar: View {
     let remaining: Double
     let resetTime: String
     var darkMode: Bool = true
+    /// Account color dot drawn before the label; `nil` draws no dot.
+    var dotColor: Color? = nil
 
     private var labelColor: Color {
         darkMode ? Color(hex: "CCCCCC") : Color(hex: "444444")
@@ -155,10 +157,16 @@ struct UsageProgressBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 6) {
+                if let dotColor {
+                    Circle()
+                        .fill(dotColor)
+                        .frame(width: 7, height: 7)
+                }
                 Text(label)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(labelColor)
+                    .lineLimit(1)
                 Spacer()
                 Text("\(Int(remaining))% left")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
