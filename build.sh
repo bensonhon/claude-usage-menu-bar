@@ -36,6 +36,7 @@ SOURCES=(
     "${PROJECT_DIR}/ClaudeUsageMenuBar/AccountTabsView.swift"
     "${PROJECT_DIR}/ClaudeUsageMenuBar/AccountListView.swift"
     "${PROJECT_DIR}/ClaudeUsageMenuBar/MenuBarIconRenderer.swift"
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/MenuBarRingClickMonitor.swift"
 )
 
 echo "==> Building ${APP_NAME} (universal: ${ARCHS[*]})..."
