@@ -31,6 +31,11 @@ SOURCES=(
     "${PROJECT_DIR}/ClaudeUsageMenuBar/TokenHistoryView.swift"
     "${PROJECT_DIR}/ClaudeUsageMenuBar/RecentSessionsView.swift"
     "${PROJECT_DIR}/ClaudeUsageMenuBar/Settings.swift"
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/ClaudeAccount.swift"
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/AccountStore.swift"
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/AccountTabsView.swift"
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/AccountListView.swift"
+    "${PROJECT_DIR}/ClaudeUsageMenuBar/MenuBarIconRenderer.swift"
 )
 
 echo "==> Building ${APP_NAME} (universal: ${ARCHS[*]})..."
@@ -76,9 +81,9 @@ cat > "${CONTENTS}/Info.plist" << 'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.3.4</string>
+    <string>1.4.0</string>
     <key>CFBundleVersion</key>
-    <string>1.3.4</string>
+    <string>1.4.0</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>

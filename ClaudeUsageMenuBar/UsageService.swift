@@ -1,99 +1,162 @@
 import Foundation
 import SwiftUI
+import Combine
 
 /// Isolated to the main actor so every `@Published` mutation (which drives the
 /// SwiftUI menu bar) happens on the main thread. Blocking helpers below are
 /// `nonisolated` and run off the main thread.
 @MainActor
 final class UsageService: ObservableObject {
-    @Published var loadState: UsageLoadState = .idle
-    @Published var windows: [String: UsageWindow] = [:]
-    @Published var extraUsage: ExtraUsage? = nil
-    @Published var tokenActivity: TokenActivity = TokenActivity()
-    @Published var tokenActivityLoaded: Bool = false
-    @Published var lastUpdated: Date? = nil
-    @Published var planName: String = "Pro"
+    @Published private(set) var usageByConfigFolderPath: [String: AccountUsage] = [:]
+
+    let accountStore: AccountStore
 
     private var refreshTimer: Timer?
+    private var shownAccountsSubscription: AnyCancellable?
     private let apiURL = URL(string: "https://platform.claude.com/api/oauth/usage")!
 
-    init() {
+    init(accountStore: AccountStore) {
+        self.accountStore = accountStore
+        shownAccountsSubscription = accountStore.$accounts
+            .map { accounts in accounts.filter(\.isShownInMenuBar).map(\.configFolderPath) }
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { await self?.refresh() }
+            }
         Task { await self.refreshAndReschedule() }
     }
 
     // MARK: - Public
 
+    func usage(for account: ClaudeAccount) -> AccountUsage {
+        usageByConfigFolderPath[account.configFolderPath] ?? AccountUsage()
+    }
+
     func refresh(force: Bool = false) async {
-        async let activityTask = Task.detached(priority: .userInitiated) { [weak self] in
-            await self?.parseLocalTokenHistory() ?? TokenActivity()
+        let homeFolderPath = ClaudeAccount.currentHomeFolderPath
+        let foundConfigFolderPaths = await Task.detached(priority: .userInitiated) {
+            Self.findConfigFoldersWithKeychainLogin(homeFolderPath: homeFolderPath)
+        }.value
+        accountStore.addFoundConfigFolders(foundConfigFolderPaths)
+
+        await withTaskGroup(of: Void.self) { group in
+            for account in accountStore.accounts {
+                group.addTask { await self.refresh(account: account, force: force) }
+            }
+        }
+    }
+
+    private func refresh(account: ClaudeAccount, force: Bool) async {
+        let configFolderPath = account.configFolderPath
+        let keychainServiceName = account.keychainServiceName
+
+        guard account.isShownInMenuBar else {
+            let keychainLoginStatus = await Task.detached(priority: .utility) {
+                Self.readKeychainLoginStatus(keychainServiceName: keychainServiceName)
+            }.value
+            usageByConfigFolderPath[configFolderPath, default: AccountUsage()].keychainLoginStatus = keychainLoginStatus
+            return
+        }
+
+        let projectsFolderURL = account.projectsFolderURL
+        async let activityTask = Task.detached(priority: .userInitiated) {
+            await Self.parseLocalTokenHistory(projectsFolderURL: projectsFolderURL)
         }.value
 
+        let lastUpdated = usageByConfigFolderPath[configFolderPath]?.lastUpdated
         let skipNetwork = !force && lastUpdated.map { Date().timeIntervalSince($0) < 60 } ?? false
 
         if !skipNetwork {
-            loadState = .loading
+            usageByConfigFolderPath[configFolderPath, default: AccountUsage()].loadState = .loading
             do {
-                let (token, plan) = try fetchOAuthToken()
+                let (token, plan) = try await Task.detached(priority: .userInitiated) {
+                    try Self.fetchOAuthToken(keychainServiceName: keychainServiceName)
+                }.value
+                usageByConfigFolderPath[configFolderPath, default: AccountUsage()].keychainLoginStatus = .found
                 let response = try await fetchUsage(token: token)
-                await MainActor.run {
-                    self.windows = response.windows
-                    self.extraUsage = response.extraUsage
-                    self.planName = plan
-                    self.lastUpdated = Date()
-                    self.loadState = .loaded
+                var usage = usageByConfigFolderPath[configFolderPath] ?? AccountUsage()
+                usage.windows = response.windows
+                usage.extraUsage = response.extraUsage
+                usage.planName = plan
+                usage.lastUpdated = Date()
+                usage.loadState = .loaded
+                usageByConfigFolderPath[configFolderPath] = usage
+            } catch let error as UsageError {
+                var usage = usageByConfigFolderPath[configFolderPath] ?? AccountUsage()
+                if let keychainLoginStatus = error.keychainLoginStatus {
+                    usage.keychainLoginStatus = keychainLoginStatus
                 }
+                usage.loadState = .error(error.localizedDescription)
+                usageByConfigFolderPath[configFolderPath] = usage
             } catch {
-                await MainActor.run {
-                    if case .loaded = self.loadState {
-                        // Keep showing stale data, just update error
-                    } else {
-                        self.loadState = .error(error.localizedDescription)
-                    }
-                }
+                usageByConfigFolderPath[configFolderPath, default: AccountUsage()].loadState = .error(error.localizedDescription)
             }
         }
 
         let activity = await activityTask
-        await MainActor.run {
-            self.tokenActivity = activity
-            self.tokenActivityLoaded = true
+        var usage = usageByConfigFolderPath[configFolderPath] ?? AccountUsage()
+        usage.tokenActivity = activity
+        usage.tokenActivityLoaded = true
+        usageByConfigFolderPath[configFolderPath] = usage
+    }
+
+    private var isEveryShownAccountLoaded: Bool {
+        accountStore.shownAccounts.allSatisfy { usage(for: $0).hasUsageData }
+    }
+
+    private nonisolated static func findConfigFoldersWithKeychainLogin(homeFolderPath: String) -> [String] {
+        let folderNames = (try? FileManager.default.contentsOfDirectory(atPath: homeFolderPath)) ?? []
+        return folderNames
+            .filter(ClaudeAccount.isConfigFolderName)
+            .map { (homeFolderPath as NSString).appendingPathComponent($0) }
+            .filter(isExistingFolder)
+            .filter { configFolderPath in
+                hasKeychainEntry(keychainServiceName: ClaudeAccount.keychainServiceName(
+                    configFolderPath: configFolderPath,
+                    homeFolderPath: homeFolderPath
+                ))
+            }
+            .sorted()
+    }
+
+    nonisolated static func isExistingFolder(_ path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
+    private nonisolated static func hasKeychainEntry(keychainServiceName: String) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = ["find-generic-password", "-s", keychainServiceName]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        do {
+            try process.run()
+        } catch {
+            return false
         }
-    }
-
-    // MARK: - Computed Helpers
-
-    var sessionWindow: UsageWindow? {
-        windows["five_hour"]
-    }
-
-    var weeklyWindow: UsageWindow? {
-        windows["seven_day"]
-    }
-
-    var secondaryWindows: [WindowDisplayInfo] {
-        let primaryKeys: Set<String> = ["five_hour", "seven_day"]
-        return windows
-            .filter { !primaryKeys.contains($0.key) }
-            .map { WindowDisplayInfo(key: $0.key, window: $0.value) }
-            .sorted { $0.label < $1.label }
-    }
-
-    /// `nil` means no fresh data (e.g. OAuth token expired and we can't reach the API).
-    var menuBarRemaining: Double? {
-        sessionWindow?.remaining
-    }
-
-    /// True once we've successfully fetched API data at least once this session.
-    var hasUsageData: Bool {
-        !windows.isEmpty
+        process.waitUntilExit()
+        return process.terminationStatus == 0
     }
 
     // MARK: - Keychain
 
-    private nonisolated func fetchOAuthToken() throws -> (String, String) {
+    private nonisolated static func readKeychainLoginStatus(keychainServiceName: String) -> KeychainLoginStatus {
+        do {
+            _ = try fetchOAuthToken(keychainServiceName: keychainServiceName)
+            return .found
+        } catch let error as UsageError {
+            return error.keychainLoginStatus ?? .unreadable
+        } catch {
+            return .unreadable
+        }
+    }
+
+    private nonisolated static func fetchOAuthToken(keychainServiceName: String) throws -> (String, String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        process.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
+        process.arguments = ["find-generic-password", "-s", keychainServiceName, "-w"]
 
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -120,7 +183,7 @@ final class UsageService: ObservableObject {
            let oauth = creds.claudeAiOauth {
             // Check expiry
             if let exp = oauth.expiresAt, exp < Date().timeIntervalSince1970 * 1000 {
-                throw UsageError.invalidToken
+                throw UsageError.tokenExpired
             }
             let plan = oauth.subscriptionType?.capitalized ?? "Pro"
             return (oauth.accessToken, plan)
@@ -179,10 +242,8 @@ final class UsageService: ObservableObject {
     /// Scans `.jsonl` files modified in the last 10 days concurrently via TaskGroup.
     /// Each message's own timestamp decides which window (today / 3d / 7d) it
     /// contributes to — file mod-date is just a gate to skip old files.
-    private nonisolated func parseLocalTokenHistory() async -> TokenActivity {
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser
-        let claudeDir = homeDir.appendingPathComponent(".claude/projects")
-        guard FileManager.default.fileExists(atPath: claudeDir.path) else { return TokenActivity() }
+    private nonisolated static func parseLocalTokenHistory(projectsFolderURL: URL) async -> TokenActivity {
+        guard FileManager.default.fileExists(atPath: projectsFolderURL.path) else { return TokenActivity() }
 
         let calendar = Calendar.current
         let now = Date()
@@ -196,7 +257,7 @@ final class UsageService: ObservableObject {
         let fileCutoff = sessionCutoff
         var fileURLs: [URL] = []
         let enumerator = FileManager.default.enumerator(
-            at: claudeDir,
+            at: projectsFolderURL,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles]
         )
@@ -208,13 +269,13 @@ final class UsageService: ObservableObject {
         }
 
         // Parse each file concurrently.
-        var results: [FileParseResult] = await withTaskGroup(of: FileParseResult.self) { group in
+        let results: [FileParseResult] = await withTaskGroup(of: FileParseResult.self) { group in
             for url in fileURLs {
-                group.addTask { [weak self] in
-                    self?.parseFile(url: url,
-                                    startOfToday: startOfToday,
-                                    start3Days: start3Days,
-                                    start7Days: start7Days) ?? FileParseResult()
+                group.addTask {
+                    parseFile(url: url,
+                              startOfToday: startOfToday,
+                              start3Days: start3Days,
+                              start7Days: start7Days)
                 }
             }
             var collected: [FileParseResult] = []
@@ -249,8 +310,6 @@ final class UsageService: ObservableObject {
                 }
             }
         }
-        _ = results  // keep for any future use / silence warning
-        results.removeAll(keepingCapacity: false)
 
         activity.currentModel = latestModel
 
@@ -273,7 +332,7 @@ final class UsageService: ObservableObject {
     }
 
     /// Parses a single JSONL file and returns its contribution. Pure / thread-safe.
-    private nonisolated func parseFile(url: URL, startOfToday: Date, start3Days: Date, start7Days: Date) -> FileParseResult {
+    private nonisolated static func parseFile(url: URL, startOfToday: Date, start3Days: Date, start7Days: Date) -> FileParseResult {
         var result = FileParseResult()
         guard let lines = readTailLines(of: url) else { return result }
         var seenIDs = Set<String>()
@@ -340,7 +399,7 @@ final class UsageService: ObservableObject {
     /// Reads up to the last ~128 KB of a JSONL file without loading the whole thing.
     /// Trades a small amount of precision (token totals may miss very long sessions)
     /// for much faster parsing — the recent entries are what we need for display.
-    private nonisolated func readTailLines(of url: URL, maxBytes: UInt64 = 128 * 1024) -> [String]? {
+    private nonisolated static func readTailLines(of url: URL, maxBytes: UInt64 = 128 * 1024) -> [String]? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
 
@@ -375,7 +434,7 @@ final class UsageService: ObservableObject {
     private func scheduleNextRefresh() {
         Task { @MainActor in
             self.refreshTimer?.invalidate()
-            let interval: TimeInterval = self.hasUsageData ? 60 : 15
+            let interval: TimeInterval = self.isEveryShownAccountLoaded ? 60 : 15
             self.refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
                 guard let self else { return }
                 Task { await self.refreshAndReschedule() }
@@ -392,6 +451,7 @@ final class UsageService: ObservableObject {
 
 enum UsageError: LocalizedError {
     case keychainNotFound
+    case tokenExpired
     case invalidToken
     case networkError(String)
 
@@ -399,10 +459,25 @@ enum UsageError: LocalizedError {
         switch self {
         case .keychainNotFound:
             return "Claude Code credentials not found in Keychain. Make sure you're logged in to Claude Code."
+        case .tokenExpired:
+            return "Claude Code login token expired. Use Claude Code with this account once to refresh it."
         case .invalidToken:
             return "Could not parse OAuth token from Keychain."
         case .networkError(let msg):
             return "Network error: \(msg)"
+        }
+    }
+
+    var keychainLoginStatus: KeychainLoginStatus? {
+        switch self {
+        case .keychainNotFound:
+            return .notFound
+        case .tokenExpired:
+            return .tokenExpired
+        case .invalidToken:
+            return .unreadable
+        case .networkError:
+            return nil
         }
     }
 }
