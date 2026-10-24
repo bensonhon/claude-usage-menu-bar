@@ -174,6 +174,26 @@ Task { @MainActor in
             == [defaultConfigFolderPath, secondConfigFolderPath],
           "the default account is put first when the saved list lacks it")
 
+    let settings = AppSettings(userDefaults: testDefaults)
+    check(settings.multiAccountSimpleMode == false, "simple mode is off by default")
+    settings.multiAccountSimpleMode = true
+    check(AppSettings(userDefaults: testDefaults).multiAccountSimpleMode == true,
+          "simple mode is saved and loaded back")
+    settings.multiAccountSimpleMode = false
+    check(AppSettings(userDefaults: testDefaults).multiAccountSimpleMode == false,
+          "simple mode can be turned off again")
+
+    check(PopoverAccountContent.choose(multiAccountSimpleMode: false, shownAccountCount: 1) == .standard,
+          "mode off with one account shows the standard popover")
+    check(PopoverAccountContent.choose(multiAccountSimpleMode: false, shownAccountCount: 3) == .standard,
+          "mode off with several accounts keeps the tabs")
+    check(PopoverAccountContent.choose(multiAccountSimpleMode: true, shownAccountCount: 1) == .standard,
+          "mode on with one account shows the standard popover")
+    check(PopoverAccountContent.choose(multiAccountSimpleMode: true, shownAccountCount: 0) == .standard,
+          "mode on with no account shown shows the standard popover")
+    check(PopoverAccountContent.choose(multiAccountSimpleMode: true, shownAccountCount: 2) == .simpleList,
+          "mode on with several accounts shows the simple list")
+
     UserDefaults.standard.removePersistentDomain(forName: testDefaultsSuiteName)
     print(failedCheckNames.isEmpty ? "ALL PASSED" : "FAILED: \(failedCheckNames.count)")
     exit(failedCheckNames.isEmpty ? 0 : 1)

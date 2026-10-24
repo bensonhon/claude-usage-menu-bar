@@ -9,5 +9,6 @@ swiftc -O -sdk "$(xcrun --show-sdk-path)" \
     "${DIR}/ClaudeUsageMenuBar/ClaudeAccount.swift" \
     "${DIR}/ClaudeUsageMenuBar/AccountStore.swift" \
     "${DIR}/ClaudeUsageMenuBar/MenuBarIconRenderer.swift" \
+    "${DIR}/ClaudeUsageMenuBar/Settings.swift" \
     -o "${OUT}" -module-name AccountChecks
 "${OUT}"

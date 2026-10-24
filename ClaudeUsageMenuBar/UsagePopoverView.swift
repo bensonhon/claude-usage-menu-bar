@@ -59,26 +59,38 @@ struct UsagePopoverView: View {
         shownAccounts.count > 1
     }
 
+    private var accountContent: PopoverAccountContent {
+        PopoverAccountContent.choose(
+            multiAccountSimpleMode: settings.multiAccountSimpleMode,
+            shownAccountCount: shownAccounts.count
+        )
+    }
+
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 8) {
                 headerSection
-                if isAccountColorShown {
-                    AccountTabsView(
-                        tabs: accountTabs,
-                        selectedConfigFolderPath: selectedAccount?.configFolderPath,
-                        darkMode: settings.darkMode,
-                        onSelect: selectAccount
-                    )
-                }
-                if let selectedAccount {
-                    ZStack(alignment: .top) {
-                        selectedAccountSection(selectedAccount)
-                            .id(selectedAccount.configFolderPath)
-                            .transition(accountSectionTransition)
+                switch accountContent {
+                case .simpleList:
+                    simpleAccountList
+                case .standard:
+                    if isAccountColorShown {
+                        AccountTabsView(
+                            tabs: accountTabs,
+                            selectedConfigFolderPath: selectedAccount?.configFolderPath,
+                            darkMode: settings.darkMode,
+                            onSelect: selectAccount
+                        )
                     }
-                } else {
-                    noAccountShownSection
+                    if let selectedAccount {
+                        ZStack(alignment: .top) {
+                            selectedAccountSection(selectedAccount)
+                                .id(selectedAccount.configFolderPath)
+                                .transition(accountSectionTransition)
+                        }
+                    } else {
+                        noAccountShownSection
+                    }
                 }
                 settingsSection
                 footerSection
@@ -184,6 +196,68 @@ struct UsagePopoverView: View {
         }
     }
 
+    // MARK: - Simple Account List
+
+    /// Weekly rings side by side, one column per shown account in Settings
+    /// order, with any login problems listed under the rings.
+    private var simpleAccountList: some View {
+        let ringSize: CGFloat = shownAccounts.count > 3 ? 48 : (shownAccounts.count > 2 ? 58 : 70)
+        let isCompact = shownAccounts.count > 2
+        return VStack(spacing: 8) {
+            HStack {
+                Text("Weekly (7d)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(textMuted)
+                Spacer()
+            }
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(shownAccounts) { account in
+                    simpleAccountColumn(account, usage: service.usage(for: account), ringSize: ringSize, isCompact: isCompact)
+                }
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(cardColor)
+            )
+            ForEach(shownAccounts) { account in
+                loginProblemNote(
+                    service.usage(for: account).keychainLoginStatus,
+                    accountLabel: account.labelOrFolderName,
+                    dotColor: AccountColor.color(position: accountStore.position(of: account))
+                )
+            }
+        }
+    }
+
+    private func simpleAccountColumn(_ account: ClaudeAccount, usage: AccountUsage, ringSize: CGFloat, isCompact: Bool) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(AccountColor.color(position: accountStore.position(of: account)))
+                    .frame(width: 7, height: 7)
+                Text(account.labelOrFolderName)
+                    .font(.system(size: isCompact ? 11 : 12, weight: .semibold))
+                    .foregroundColor(textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .padding(.horizontal, 2)
+            UsageRingView(
+                remaining: usage.weeklyWindow?.remaining,
+                size: ringSize,
+                lineWidth: ringSize > 60 ? 7 : 6,
+                label: nil,
+                resetTime: usage.weeklyWindow?.resetClockString,
+                darkMode: settings.darkMode,
+                compactReset: isCompact
+            )
+        }
+        .padding(.horizontal, 3)
+        .frame(maxWidth: .infinity)
+    }
+
     private var noAccountShownSection: some View {
         Text("No accounts shown. Turn one on under Accounts.")
             .font(.system(size: 12))
@@ -240,31 +314,44 @@ struct UsagePopoverView: View {
     }
 
     @ViewBuilder
-    private func loginProblemNote(_ keychainLoginStatus: KeychainLoginStatus) -> some View {
+    private func loginProblemNote(
+        _ keychainLoginStatus: KeychainLoginStatus,
+        accountLabel: String? = nil,
+        dotColor: Color? = nil
+    ) -> some View {
         switch keychainLoginStatus {
         case .tokenExpired:
-            loginProblemText("Login token expired. Use Claude Code with this account once, and it comes back on the next refresh.")
+            loginProblemText("Login token expired. Use Claude Code with this account once, and it comes back on the next refresh.", accountLabel: accountLabel, dotColor: dotColor)
         case .notFound:
-            loginProblemText("No Claude Code login found for this folder. Sign in to Claude Code with this config folder.")
+            loginProblemText("No Claude Code login found for this folder. Sign in to Claude Code with this config folder.", accountLabel: accountLabel, dotColor: dotColor)
         case .unreadable:
-            loginProblemText("Could not read this account's login from Keychain.")
+            loginProblemText("Could not read this account's login from Keychain.", accountLabel: accountLabel, dotColor: dotColor)
         case .notChecked, .found:
             EmptyView()
         }
     }
 
-    private func loginProblemText(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 11))
-            .foregroundColor(textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(hex: "F59E0B").opacity(0.14))
-            )
+    /// `accountLabel` and `dotColor` name the account when several notes share
+    /// one list; the single-account views leave them off.
+    private func loginProblemText(_ text: String, accountLabel: String?, dotColor: Color?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if let dotColor {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 7, height: 7)
+            }
+            Text(accountLabel.map { "\($0): \(text)" } ?? text)
+        }
+        .font(.system(size: 11))
+        .foregroundColor(textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(hex: "F59E0B").opacity(0.14))
+        )
     }
 
     private func mainRingsSection(_ usage: AccountUsage) -> some View {
@@ -425,6 +512,13 @@ struct UsagePopoverView: View {
 
             AccountListView(accountStore: accountStore, service: service, darkMode: settings.darkMode)
 
+            Toggle(isOn: $settings.multiAccountSimpleMode) {
+                Text("Simple Mode")
+                    .font(.system(size: 12))
+                    .foregroundColor(textPrimary)
+            }
+            .toggleStyle(.checkbox)
+
             Divider()
                 .background(cardColor)
 
@@ -480,13 +574,23 @@ struct UsagePopoverView: View {
         return raw
     }
 
+    /// In the simple list no account is selected, so show the freshest refresh.
+    private var footerLastUpdated: Date? {
+        switch accountContent {
+        case .simpleList:
+            return shownAccounts.compactMap { service.usage(for: $0).lastUpdated }.max()
+        case .standard:
+            return selectedUsage.lastUpdated
+        }
+    }
+
     private var footerSection: some View {
         VStack(spacing: 8) {
             Divider()
                 .background(cardColor)
 
             HStack {
-                if let lastUpdated = selectedUsage.lastUpdated {
+                if let lastUpdated = footerLastUpdated {
                     Text("Updated \(lastUpdated, style: .relative) ago")
                         .font(.system(size: 10))
                         .foregroundColor(textMuted)
@@ -574,7 +678,8 @@ struct UsagePopoverView: View {
                 }
             }
 
-            if case .error(let msg) = selectedUsage.loadState, !selectedUsage.keychainLoginStatus.isLoginProblem {
+            if accountContent == .standard,
+               case .error(let msg) = selectedUsage.loadState, !selectedUsage.keychainLoginStatus.isLoginProblem {
                 Text(friendlyErrorMessage(msg))
                     .font(.system(size: 10))
                     .foregroundColor(textMuted)
