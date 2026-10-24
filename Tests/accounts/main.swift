@@ -175,13 +175,13 @@ Task { @MainActor in
           "the default account is put first when the saved list lacks it")
 
     let settings = AppSettings(userDefaults: testDefaults)
-    check(settings.multiAccountSimpleMode == false, "multiple account simple mode is off by default")
+    check(settings.multiAccountSimpleMode == false, "simple mode is off by default")
     settings.multiAccountSimpleMode = true
     check(AppSettings(userDefaults: testDefaults).multiAccountSimpleMode == true,
-          "multiple account simple mode is saved and loaded back")
+          "simple mode is saved and loaded back")
     settings.multiAccountSimpleMode = false
     check(AppSettings(userDefaults: testDefaults).multiAccountSimpleMode == false,
-          "multiple account simple mode can be turned off again")
+          "simple mode can be turned off again")
 
     check(PopoverAccountContent.choose(multiAccountSimpleMode: false, shownAccountCount: 1) == .standard,
           "mode off with one account shows the standard popover")

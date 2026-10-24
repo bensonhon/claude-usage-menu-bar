@@ -493,7 +493,7 @@ struct UsagePopoverView: View {
             AccountListView(accountStore: accountStore, service: service, darkMode: settings.darkMode)
 
             Toggle(isOn: $settings.multiAccountSimpleMode) {
-                Text("Multiple account simple mode")
+                Text("Simple Mode")
                     .font(.system(size: 12))
                     .foregroundColor(textPrimary)
             }
