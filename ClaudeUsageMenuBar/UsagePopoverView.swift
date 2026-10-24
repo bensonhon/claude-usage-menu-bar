@@ -9,6 +9,7 @@ struct UsagePopoverView: View {
 
     @State private var refreshHovered = false
     @State private var quitHovered = false
+    @State private var incomingAccountEdge: Edge = .trailing
 
     private let popoverWidth: CGFloat = 300
 
@@ -71,9 +72,11 @@ struct UsagePopoverView: View {
                     )
                 }
                 if let selectedAccount {
-                    selectedAccountSection(selectedAccount)
-                        .id(selectedAccount.configFolderPath)
-                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .trailing)))
+                    ZStack(alignment: .top) {
+                        selectedAccountSection(selectedAccount)
+                            .id(selectedAccount.configFolderPath)
+                            .transition(accountSectionTransition)
+                    }
                 } else {
                     noAccountShownSection
                 }
@@ -129,16 +132,33 @@ struct UsagePopoverView: View {
                 configFolderPath: account.configFolderPath,
                 label: account.labelOrFolderName,
                 color: AccountColor.color(position: accountStore.position(of: account)),
-                sessionRemaining: service.usage(for: account).sessionWindow?.remaining
+                sessionRemaining: service.usage(for: account).sessionWindow?.remaining,
+                weeklyRemaining: service.usage(for: account).weeklyWindow?.remaining
             )
         }
+    }
+
+    private var outgoingAccountEdge: Edge {
+        incomingAccountEdge == .leading ? .trailing : .leading
+    }
+
+    private var accountSectionTransition: AnyTransition {
+        if reduceMotion {
+            return .opacity
+        }
+        return .asymmetric(insertion: .move(edge: incomingAccountEdge), removal: .move(edge: outgoingAccountEdge))
     }
 
     private func selectAccount(_ configFolderPath: String) {
         if reduceMotion {
             settings.selectedConfigFolderPath = configFolderPath
-        } else {
-            withAnimation(.easeOut(duration: 0.25)) {
+            return
+        }
+        let selectedIndex = shownAccounts.firstIndex { $0.configFolderPath == selectedAccount?.configFolderPath } ?? 0
+        let newIndex = shownAccounts.firstIndex { $0.configFolderPath == configFolderPath } ?? 0
+        incomingAccountEdge = newIndex < selectedIndex ? .leading : .trailing
+        DispatchQueue.main.async {
+            withAnimation(.easeOut(duration: 0.3)) {
                 settings.selectedConfigFolderPath = configFolderPath
             }
         }
