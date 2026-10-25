@@ -194,6 +194,11 @@ Task { @MainActor in
     check(PopoverAccountContent.choose(multiAccountSimpleMode: true, shownAccountCount: 2) == .simpleList,
           "mode on with several accounts shows the simple list")
 
+    check(SimpleModeWindow.allCases == [.session, .weekly],
+          "simple mode switch lists Session first and Weekly second")
+    check(SimpleModeWindow.allCases.map(\.title) == ["Session", "Weekly"],
+          "simple mode switch titles are Session and Weekly")
+
     UserDefaults.standard.removePersistentDomain(forName: testDefaultsSuiteName)
     print(failedCheckNames.isEmpty ? "ALL PASSED" : "FAILED: \(failedCheckNames.count)")
     exit(failedCheckNames.isEmpty ? 0 : 1)
