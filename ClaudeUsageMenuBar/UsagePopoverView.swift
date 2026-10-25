@@ -146,17 +146,19 @@ struct UsagePopoverView: View {
     }
 
     private var headerSection: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text("Claude Usage")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(textPrimary)
-                .lineLimit(1)
-                .fixedSize()
-            Text(appVersion)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(textMuted)
-                .lineLimit(1)
-                .fixedSize()
+        HStack(alignment: .center, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("Claude Usage")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(textPrimary)
+                    .lineLimit(1)
+                    .fixedSize()
+                Text(appVersion)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(textMuted)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
             Spacer()
             appearanceToggle
             simpleModeButton
@@ -194,7 +196,6 @@ struct UsagePopoverView: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(settings.darkMode ? Color(hex: "333355") : Color(hex: "D0D0D5"))
         )
-        .alignmentGuide(.firstTextBaseline) { dimensions in dimensions[VerticalAlignment.center] }
     }
 
     private var simpleModeButton: some View {
@@ -215,8 +216,7 @@ struct UsagePopoverView: View {
                 }
             }
             .help("Simple Mode")
-            .alignmentGuide(.firstTextBaseline) { dimensions in dimensions[VerticalAlignment.center] }
-    }
+        }
 
     private var accountTabs: [AccountTab] {
         shownAccounts.map { account in
