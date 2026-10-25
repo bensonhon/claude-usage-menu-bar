@@ -10,6 +10,9 @@ struct UsagePopoverView: View {
     @State private var refreshHovered = false
     @State private var quitHovered = false
     @State private var incomingAccountEdge: Edge = .trailing
+    @State private var isSwitchingMode = false
+    @State private var simpleModeWindow: SimpleModeWindow = .weekly
+    @State private var incomingSimpleModeWindowEdge: Edge = .trailing
 
     private let popoverWidth: CGFloat = 300
 
@@ -70,28 +73,17 @@ struct UsagePopoverView: View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 8) {
                 headerSection
-                switch accountContent {
-                case .simpleList:
-                    simpleAccountList
-                case .standard:
-                    if isAccountColorShown {
-                        AccountTabsView(
-                            tabs: accountTabs,
-                            selectedConfigFolderPath: selectedAccount?.configFolderPath,
-                            darkMode: settings.darkMode,
-                            onSelect: selectAccount
-                        )
-                    }
-                    if let selectedAccount {
-                        ZStack(alignment: .top) {
-                            selectedAccountSection(selectedAccount)
-                                .id(selectedAccount.configFolderPath)
-                                .transition(accountSectionTransition)
-                        }
-                    } else {
-                        noAccountShownSection
+                ZStack(alignment: .top) {
+                    switch accountContent {
+                    case .simpleList:
+                        simpleAccountList
+                            .transition(.opacity)
+                    case .standard:
+                        standardAccountContent
+                            .transition(.opacity)
                     }
                 }
+                .animation(modeSwitchAnimation, value: accountContent)
                 settingsSection
                 footerSection
             }
@@ -108,6 +100,7 @@ struct UsagePopoverView: View {
             )
         }
         .frame(width: popoverWidth, height: min(max(contentHeight, 360), maxPopoverHeight))
+        .animation(isSwitchingMode ? modeSwitchAnimation : nil, value: contentHeight)
         .background(bgColor)
         .onPreferenceChange(ContentHeightPreferenceKey.self) { newHeight in
             if newHeight > 0 {
@@ -116,6 +109,32 @@ struct UsagePopoverView: View {
         }
         .task {
             await service.refresh()
+        }
+    }
+
+    private var modeSwitchAnimation: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.3)
+    }
+
+    private var standardAccountContent: some View {
+        VStack(spacing: 8) {
+            if isAccountColorShown {
+                AccountTabsView(
+                    tabs: accountTabs,
+                    selectedConfigFolderPath: selectedAccount?.configFolderPath,
+                    darkMode: settings.darkMode,
+                    onSelect: selectAccount
+                )
+            }
+            if let selectedAccount {
+                ZStack(alignment: .top) {
+                    selectedAccountSection(selectedAccount)
+                        .id(selectedAccount.configFolderPath)
+                        .transition(accountSectionTransition)
+                }
+            } else {
+                noAccountShownSection
+            }
         }
     }
 
@@ -129,13 +148,74 @@ struct UsagePopoverView: View {
     private var headerSection: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text("Claude Usage")
-                .font(.system(size: 18, weight: .bold))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundColor(textPrimary)
+                .lineLimit(1)
+                .fixedSize()
             Text(appVersion)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(textMuted)
+                .lineLimit(1)
+                .fixedSize()
             Spacer()
+            appearanceToggle
+            simpleModeButton
         }
+    }
+
+    private var appearanceToggle: some View {
+        HStack(spacing: 2) {
+            Image(systemName: "moon.fill")
+                .font(.system(size: 10))
+                .foregroundColor(settings.darkMode ? .white : textMuted)
+                .frame(width: 24, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(settings.darkMode ? Color(hex: "E8732A") : Color.clear)
+                )
+                .contentShape(Rectangle())
+                .onTapGesture { settings.darkMode = true }
+                .help("Dark mode")
+
+            Image(systemName: "sun.max.fill")
+                .font(.system(size: 10))
+                .foregroundColor(!settings.darkMode ? .white : textMuted)
+                .frame(width: 24, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(!settings.darkMode ? Color(hex: "E8732A") : Color.clear)
+                )
+                .contentShape(Rectangle())
+                .onTapGesture { settings.darkMode = false }
+                .help("Light mode")
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(settings.darkMode ? Color(hex: "333355") : Color(hex: "D0D0D5"))
+        )
+        .alignmentGuide(.firstTextBaseline) { dimensions in dimensions[VerticalAlignment.center] }
+    }
+
+    private var simpleModeButton: some View {
+        Image(systemName: "arrow.down.right.and.arrow.up.left")
+            .font(.system(size: 11))
+            .foregroundColor(settings.multiAccountSimpleMode ? .white : textMuted)
+            .frame(width: 26, height: 22)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(settings.multiAccountSimpleMode ? Color(hex: "E8732A") : cardColor)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                isSwitchingMode = true
+                settings.multiAccountSimpleMode.toggle()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    isSwitchingMode = false
+                }
+            }
+            .help("Simple Mode")
+            .alignmentGuide(.firstTextBaseline) { dimensions in dimensions[VerticalAlignment.center] }
     }
 
     private var accountTabs: [AccountTab] {
@@ -198,29 +278,15 @@ struct UsagePopoverView: View {
 
     // MARK: - Simple Account List
 
-    /// Weekly rings side by side, one column per shown account in Settings
-    /// order, with any login problems listed under the rings.
     private var simpleAccountList: some View {
-        let ringSize: CGFloat = shownAccounts.count > 3 ? 48 : (shownAccounts.count > 2 ? 58 : 70)
-        let isCompact = shownAccounts.count > 2
-        return VStack(spacing: 8) {
-            HStack {
-                Text("Weekly (7d)")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(textMuted)
-                Spacer()
+        VStack(spacing: 8) {
+            simpleModeWindowSwitch
+            ZStack(alignment: .top) {
+                simpleAccountRings
+                    .id(simpleModeWindow)
+                    .transition(simpleModeWindowTransition)
             }
-            HStack(alignment: .top, spacing: 0) {
-                ForEach(shownAccounts) { account in
-                    simpleAccountColumn(account, usage: service.usage(for: account), ringSize: ringSize, isCompact: isCompact)
-                }
-            }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(cardColor)
-            )
+            .clipped()
             ForEach(shownAccounts) { account in
                 loginProblemNote(
                     service.usage(for: account).keychainLoginStatus,
@@ -231,8 +297,70 @@ struct UsagePopoverView: View {
         }
     }
 
+    private var simpleModeWindowSwitch: some View {
+        HStack(spacing: 2) {
+            ForEach(SimpleModeWindow.allCases, id: \.self) { window in
+                Text(window.title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(simpleModeWindow == window ? .white : textMuted)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(simpleModeWindow == window ? Color(hex: "E8732A") : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture { selectSimpleModeWindow(window) }
+            }
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(settings.darkMode ? Color(hex: "333355") : Color(hex: "D0D0D5"))
+        )
+    }
+
+    private var simpleModeWindowTransition: AnyTransition {
+        if reduceMotion {
+            return .opacity
+        }
+        let outgoingEdge: Edge = incomingSimpleModeWindowEdge == .leading ? .trailing : .leading
+        return .asymmetric(insertion: .move(edge: incomingSimpleModeWindowEdge), removal: .move(edge: outgoingEdge))
+    }
+
+    private func selectSimpleModeWindow(_ window: SimpleModeWindow) {
+        guard window != simpleModeWindow else { return }
+        if reduceMotion {
+            simpleModeWindow = window
+            return
+        }
+        incomingSimpleModeWindowEdge = window == .weekly ? .trailing : .leading
+        DispatchQueue.main.async {
+            withAnimation(.easeOut(duration: 0.3)) {
+                simpleModeWindow = window
+            }
+        }
+    }
+
+    private var simpleAccountRings: some View {
+        let ringSize: CGFloat = shownAccounts.count > 3 ? 48 : (shownAccounts.count > 2 ? 58 : 70)
+        let isCompact = shownAccounts.count > 2
+        return HStack(alignment: .top, spacing: 0) {
+            ForEach(shownAccounts) { account in
+                simpleAccountColumn(account, usage: service.usage(for: account), ringSize: ringSize, isCompact: isCompact)
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(cardColor)
+        )
+    }
+
     private func simpleAccountColumn(_ account: ClaudeAccount, usage: AccountUsage, ringSize: CGFloat, isCompact: Bool) -> some View {
-        VStack(spacing: 8) {
+        let window = simpleModeWindow == .session ? usage.sessionWindow : usage.weeklyWindow
+        return VStack(spacing: 8) {
             HStack(spacing: 4) {
                 Circle()
                     .fill(AccountColor.color(position: accountStore.position(of: account)))
@@ -245,11 +373,11 @@ struct UsagePopoverView: View {
             }
             .padding(.horizontal, 2)
             UsageRingView(
-                remaining: usage.weeklyWindow?.remaining,
+                remaining: window?.remaining,
                 size: ringSize,
                 lineWidth: ringSize > 60 ? 7 : 6,
                 label: nil,
-                resetTime: usage.weeklyWindow?.resetClockString,
+                resetTime: window?.resetClockString,
                 darkMode: settings.darkMode,
                 compactReset: isCompact
             )
@@ -512,50 +640,6 @@ struct UsagePopoverView: View {
 
             AccountListView(accountStore: accountStore, service: service, darkMode: settings.darkMode)
 
-            Toggle(isOn: $settings.multiAccountSimpleMode) {
-                Text("Simple Mode")
-                    .font(.system(size: 12))
-                    .foregroundColor(textPrimary)
-            }
-            .toggleStyle(.checkbox)
-
-            Divider()
-                .background(cardColor)
-
-            HStack {
-                Text("Appearance")
-                    .font(.system(size: 12))
-                    .foregroundColor(textPrimary)
-                Spacer()
-                HStack(spacing: 2) {
-                    Image(systemName: "moon.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(settings.darkMode ? .white : textMuted)
-                        .frame(width: 34, height: 24)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(settings.darkMode ? Color(hex: "E8732A") : Color.clear)
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture { settings.darkMode = true }
-
-                    Image(systemName: "sun.max.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(!settings.darkMode ? .white : textMuted)
-                        .frame(width: 34, height: 24)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(!settings.darkMode ? Color(hex: "E8732A") : Color.clear)
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture { settings.darkMode = false }
-                }
-                .padding(3)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(settings.darkMode ? Color(hex: "333355") : Color(hex: "D0D0D5"))
-                )
-            }
         }
         .padding(12)
         .background(

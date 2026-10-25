@@ -41,12 +41,22 @@ final class AppSettings: ObservableObject {
 
 /// Which account content the popover shows above its settings and footer.
 enum PopoverAccountContent: Equatable {
-    /// Account tabs, or the single account's full detail.
     case standard
-    /// One compact weekly-usage block per shown account, no tabs.
     case simpleList
 
     static func choose(multiAccountSimpleMode: Bool, shownAccountCount: Int) -> PopoverAccountContent {
         multiAccountSimpleMode && shownAccountCount > 1 ? .simpleList : .standard
+    }
+}
+
+enum SimpleModeWindow: CaseIterable {
+    case session
+    case weekly
+
+    var title: String {
+        switch self {
+        case .session: return "Session"
+        case .weekly: return "Weekly"
+        }
     }
 }
