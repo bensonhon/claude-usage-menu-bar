@@ -1,0 +1,37 @@
+name: Windows tray app
+
+on:
+  push:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows-tray-app.yml'
+  workflow_dispatch:
+
+jobs:
+  test-and-ui-check:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run the Core tests
+        run: dotnet test windows/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj
+
+      - name: Publish the tray app
+        run: dotnet publish windows/ClaudeUsageTray/ClaudeUsageTray.csproj -c Release -o publish
+
+      - name: Run the app and take screenshots
+        shell: pwsh
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows/ui-check/run-ui-check.ps1 -ExecutablePath publish/ClaudeUsageTray.exe -ScreenshotFolderPath ui-check-screenshots
+
+      - name: Upload the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-check-screenshots
+          path: ui-check-screenshots
+          if-no-files-found: warn

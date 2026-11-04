@@ -19,6 +19,28 @@ A native macOS menu bar app that displays your Claude Code subscription usage wi
 - Universal binary — runs natively on both Apple Silicon and Intel Macs (no Rosetta required)
 - **Claude Code CLI** signed in (OAuth token in Keychain). Claude Desktop users are **not** supported — Desktop's credentials are encrypted separately and its activity doesn't write to `~/.claude/projects/`, so neither usage data nor token history can be read.
 
+## Windows 11
+
+A separate Windows tray app, **ClaudeUsageTray**, shows the same usage as the macOS popover. Each account you choose to show gets its own ring in the system tray, next to an optional Claude logo icon. Click a ring to open the panel above the taskbar.
+
+### Install on Windows
+
+1. Download the latest **ClaudeUsageTray-vX.Y.Z-windows-x64.zip** from [Releases](https://github.com/bensonhon/claude-usage-menu-bar/releases)
+2. Unzip it into a folder you will keep, for example `%LOCALAPPDATA%\ClaudeUsageTray`. The app starts itself at sign-in from wherever you run it, so don't run it from the Downloads folder.
+3. Run **ClaudeUsageTray.exe**. The app is not signed yet, so Windows SmartScreen may block the first launch. Click **More info**, then **Run anyway**.
+4. Windows 11 puts new tray icons behind the **^** arrow. To keep the rings on the taskbar, open **Settings → Personalization → Taskbar → Other system tray icons** and turn on each **ClaudeUsageTray** entry.
+
+Running a newer copy closes the old one. To stop it starting at sign-in, turn it off in **Task Manager → Startup apps**.
+
+### Windows requirements
+
+- Windows 11, 64-bit Intel or AMD. Nothing else to install: the .NET runtime is inside the exe.
+- **Claude Code CLI** signed in. On Windows the login is in `%USERPROFILE%\.claude\.credentials.json`, and the app reads it from there.
+
+### Build the Windows app
+
+Install the .NET 10 SDK, then run `./make-windows-zip.sh` from macOS or Linux. It runs the tests in `windows/ClaudeUsageTray.Tests` and writes `build/ClaudeUsageTray-vX.Y.Z-windows-x64.zip`. On a Windows machine, run `dotnet publish windows/ClaudeUsageTray -c Release` instead. The **Windows tray app** GitHub Actions workflow runs the tests on Windows, starts the app against a test usage server, and saves screenshots of the tray and the panel.
+
 ## Features
 
 - **Menu bar icon** — Claude logo + usage ring with percentage + session reset time. Shows `?` when no data is available.
