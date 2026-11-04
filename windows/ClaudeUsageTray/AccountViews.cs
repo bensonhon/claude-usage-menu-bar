@@ -157,6 +157,7 @@ public sealed class AccountListView
             rerender();
         }, padding: new Thickness(8, 5, 8, 5));
         button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        System.Windows.Automation.AutomationProperties.SetName(button, "Accounts");
         return button;
     }
 

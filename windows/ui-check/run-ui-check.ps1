@@ -312,24 +312,27 @@ Save-FlyoutScreenshot $process '07-flyout-light-simple-mode'
 Invoke-FlyoutButton $process 'Simple Mode'
 Invoke-FlyoutButton $process 'Dark mode'
 
+Invoke-FlyoutButton $process 'Accounts'
+Scroll-FlyoutToBottom $process
+Save-FlyoutScreenshot $process '08-flyout-accounts-list'
 Invoke-FlyoutButton $process 'Edit labels & order'
 Scroll-FlyoutToBottom $process
-Save-FlyoutScreenshot $process '08-flyout-editing-accounts'
+Save-FlyoutScreenshot $process '09-flyout-editing-accounts'
 Invoke-FlyoutButton $process 'Done'
 
 $workRingButton = Find-TrayButton 'claude-work'
 Click-Element $workRingButton
-Save-FlyoutScreenshot $process '09-flyout-work-account-from-its-ring'
+Save-FlyoutScreenshot $process '10-flyout-work-account-from-its-ring'
 
 [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
 Start-Sleep -Seconds 1
 Assert-AppRunning $process
-Save-Screenshot '10-desktop-after-escape'
+Save-Screenshot '11-desktop-after-escape'
 
 $ringBounds = (Find-TrayButton 'claude').Current.BoundingRectangle
 [NativeInput]::SetCursorPos([int]($ringBounds.Left + $ringBounds.Width / 2), [int]($ringBounds.Top + $ringBounds.Height / 2)) | Out-Null
 Start-Sleep -Seconds 3
-Save-Screenshot '11-ring-hover-tooltip'
+Save-Screenshot '12-ring-hover-tooltip'
 [NativeInput]::SetCursorPos(200, 200) | Out-Null
 
 $personalizeKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
@@ -339,7 +342,7 @@ Set-ItemProperty -Path $personalizeKey -Name AppsUseLightTheme -Value 1 -Type DW
 [NativeInput]::BroadcastThemeChange()
 Start-Sleep -Seconds 4
 Assert-AppRunning $process
-Save-TrayScreenshot '12-tray-light-taskbar'
+Save-TrayScreenshot '13-tray-light-taskbar'
 Set-ItemProperty -Path $personalizeKey -Name SystemUsesLightTheme -Value 0 -Type DWord
 Set-ItemProperty -Path $personalizeKey -Name AppsUseLightTheme -Value 0 -Type DWord
 [NativeInput]::BroadcastThemeChange()
@@ -348,16 +351,16 @@ Stop-TrayApp $process
 Remove-Item -Force (Join-Path $mainConfigFolderPath '.credentials.json'), (Join-Path $workConfigFolderPath '.credentials.json')
 $process = Start-TrayApp
 Write-TrayButtonNames
-Save-TrayScreenshot '13-tray-signed-out'
+Save-TrayScreenshot '14-tray-signed-out'
 Click-Element (Find-TrayButton 'claude')
-Save-FlyoutScreenshot $process '14-flyout-signed-out'
+Save-FlyoutScreenshot $process '15-flyout-signed-out'
 
 Invoke-FlyoutButton $process 'Quit'
 Start-Sleep -Seconds 2
 $process.Refresh()
 if (-not $process.HasExited) { throw 'Quit did not close the app' }
 Write-Host 'Quit closed the app'
-Save-TrayScreenshot '15-tray-after-quit'
+Save-TrayScreenshot '16-tray-after-quit'
 
 Stop-Process -Id $fakeUsageApi.Id -Force -ErrorAction SilentlyContinue
 Write-Host 'UI check finished'

@@ -15,7 +15,7 @@ USAGE_BY_TOKEN = {
         "seven_day": {"utilization": 74.0, "resets_at": reset_time(51)},
         "seven_day_opus": {"utilization": 12.0, "resets_at": reset_time(51)},
         "seven_day_sonnet": {"utilization": 45.0, "resets_at": reset_time(51)},
-        "extra_usage": {"is_enabled": True, "used_credits": 12.5, "monthly_limit": 50.0},
+        "extra_usage": {"is_enabled": True, "used_credits": 1250.0, "monthly_limit": 5000.0},
     },
     "ui-check-work-token": {
         "five_hour": {"utilization": 93.0, "resets_at": reset_time(0.7)},
