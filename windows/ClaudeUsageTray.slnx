@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="ClaudeUsageTray.Core/ClaudeUsageTray.Core.csproj" />
+  <Project Path="ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj" />
+  <Project Path="ClaudeUsageTray/ClaudeUsageTray.csproj" />
+</Solution>

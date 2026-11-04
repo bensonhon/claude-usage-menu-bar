@@ -4,3 +4,5 @@ DerivedData/
 .DS_Store
 vfs-overlay.yaml
 Package.swift
+bin/
+obj/
