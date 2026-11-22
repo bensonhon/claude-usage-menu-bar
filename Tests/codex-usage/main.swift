@@ -140,6 +140,19 @@ check(sessionAndWeeklyAccountUsage.menuBarRingWindow?.utilization == 12.5,
 
 check(AccountUsage().menuBarRingWindow == nil, "with no windows the menu bar ring has no window")
 
+var loadingUsage = AccountUsage()
+loadingUsage.loadState = .loading
+check(loadingUsage.isNetworkFetchSkipped(force: true, now: now),
+      "an account that is still loading is not fetched again, even on Refresh")
+var updatedUsage = AccountUsage()
+updatedUsage.loadState = .loaded
+updatedUsage.lastUpdated = now.addingTimeInterval(-30)
+check(updatedUsage.isNetworkFetchSkipped(force: false, now: now), "an account fetched 30 seconds ago is not fetched again")
+check(!updatedUsage.isNetworkFetchSkipped(force: true, now: now), "Refresh fetches an account fetched 30 seconds ago")
+updatedUsage.lastUpdated = now.addingTimeInterval(-61)
+check(!updatedUsage.isNetworkFetchSkipped(force: false, now: now), "an account fetched over a minute ago is fetched again")
+check(!AccountUsage().isNetworkFetchSkipped(force: false, now: now), "an account never fetched is fetched")
+
 var thursdayNineAMComponents = DateComponents()
 thursdayNineAMComponents.year = 2026
 thursdayNineAMComponents.month = 11

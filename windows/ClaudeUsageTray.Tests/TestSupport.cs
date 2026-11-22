@@ -58,10 +58,13 @@ public sealed class FakeUsageApi : IUsageApi
     public Func<CodexLoginToken, CodexUsageResponse> RespondToCodex { get; set; } = _ => CodexUsageResponse.Decode(
         """{"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":30,"limit_window_seconds":604800,"reset_at":1793000000},"secondary_window":null}}""");
 
-    public Task<UsageResponse> FetchClaudeUsageAsync(string accessToken)
+    public Task HeldClaudeResponse { get; set; } = Task.CompletedTask;
+
+    public async Task<UsageResponse> FetchClaudeUsageAsync(string accessToken)
     {
         RequestedAccessTokens.Add(accessToken);
-        return Task.FromResult(Respond(accessToken));
+        await HeldClaudeResponse;
+        return Respond(accessToken);
     }
 
     public Task<CodexUsageResponse> FetchCodexUsageAsync(CodexLoginToken loginToken)

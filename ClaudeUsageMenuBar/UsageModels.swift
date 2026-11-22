@@ -257,6 +257,21 @@ struct AccountUsage {
         return weeklyWindow
     }
 
+    static let minimumTimeBetweenFetches: TimeInterval = 60
+
+    func isNetworkFetchSkipped(force: Bool, now: Date) -> Bool {
+        if case .loading = loadState {
+            return true
+        }
+        if force {
+            return false
+        }
+        guard let lastUpdated else {
+            return false
+        }
+        return now.timeIntervalSince(lastUpdated) < AccountUsage.minimumTimeBetweenFetches
+    }
+
     var menuBarRingResetDay: String? {
         guard sessionWindow == nil else { return nil }
         return weeklyWindow?.resetWeekdayShort

@@ -16,6 +16,32 @@ public class UsageServiceTests
     }
 
     [Fact]
+    public async Task AnAccountThatIsStillLoadingIsNotFetchedAgain()
+    {
+        var (home, store, api, _, service) = CreateService();
+        using var _home = home;
+        home.WriteFile(Credentials.Json("token"), ".claude", ".credentials.json");
+        var heldClaudeResponse = new TaskCompletionSource();
+        api.HeldClaudeResponse = heldClaudeResponse.Task;
+
+        var firstRefresh = service.RefreshAsync();
+        var waitedFor = TimeSpan.Zero;
+        while (api.RequestedAccessTokens.Count == 0 && waitedFor < TimeSpan.FromSeconds(5))
+        {
+            await Task.Delay(10);
+            waitedFor += TimeSpan.FromMilliseconds(10);
+        }
+        var secondRefresh = service.RefreshAsync(force: true);
+        var isSecondRefreshDoneWhileFirstIsLoading = await Task.WhenAny(secondRefresh, Task.Delay(TimeSpan.FromSeconds(5))) == secondRefresh;
+        heldClaudeResponse.SetResult();
+        await Task.WhenAll(firstRefresh, secondRefresh);
+
+        Assert.True(isSecondRefreshDoneWhileFirstIsLoading);
+        Assert.Equal(["token"], api.RequestedAccessTokens);
+        Assert.IsType<UsageLoadState.Loaded>(service.UsageFor(store.Accounts[0]).LoadState);
+    }
+
+    [Fact]
     public void FindsDotClaudeFoldersThatHaveACredentialsFile()
     {
         using var home = new TemporaryFolder();

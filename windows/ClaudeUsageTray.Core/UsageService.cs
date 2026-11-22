@@ -191,8 +191,10 @@ public sealed class UsageService
             _ => throw new ArgumentOutOfRangeException(nameof(account), account.CodingTool, null),
         };
 
-        var lastUpdated = usageByConfigFolderPath.GetValueOrDefault(configFolderPath)?.LastUpdated;
-        var skipNetwork = !force && lastUpdated is { } updatedAt && timeProvider.GetUtcNow() - updatedAt < MinimumTimeBetweenFetches;
+        var currentUsage = usageByConfigFolderPath.GetValueOrDefault(configFolderPath);
+        var isAlreadyLoading = currentUsage?.LoadState is UsageLoadState.Loading;
+        var isFetchedRecently = currentUsage?.LastUpdated is { } updatedAt && timeProvider.GetUtcNow() - updatedAt < MinimumTimeBetweenFetches;
+        var skipNetwork = isAlreadyLoading || (!force && isFetchedRecently);
 
         if (!skipNetwork)
         {

@@ -74,8 +74,8 @@ final class UsageService: ObservableObject {
             }
         }.value
 
-        let lastUpdated = usageByConfigFolderPath[configFolderPath]?.lastUpdated
-        let skipNetwork = !force && lastUpdated.map { Date().timeIntervalSince($0) < 60 } ?? false
+        let currentUsage = usageByConfigFolderPath[configFolderPath] ?? AccountUsage()
+        let skipNetwork = currentUsage.isNetworkFetchSkipped(force: force, now: Date())
 
         if !skipNetwork {
             usageByConfigFolderPath[configFolderPath, default: AccountUsage()].loadState = .loading
