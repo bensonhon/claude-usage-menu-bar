@@ -8,7 +8,6 @@ final class MenuBarRingClickMonitor {
     private var eventMonitor: Any?
 
     init(accountRings: @escaping () -> [MenuBarAccountRing],
-         showLogo: @escaping () -> Bool,
          onRingClicked: @escaping (Int) -> Void) {
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
             if let button = Self.menuBarButton(in: event.window),
@@ -17,8 +16,7 @@ final class MenuBarRingClickMonitor {
                 let imageX = button.convert(event.locationInWindow, from: nil).x
                     - (button.bounds.width - image.size.width) / 2
                 if let index = MenuBarIconRenderer.accountIndex(atX: imageX,
-                                                                accountRings: accountRings(),
-                                                                showLogo: showLogo()) {
+                                                                accountRings: accountRings()) {
                     onRingClicked(index)
                 }
             }

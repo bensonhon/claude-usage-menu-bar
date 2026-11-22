@@ -26,7 +26,7 @@ public class UsageServiceTests
 
         Assert.Equal(
             [Path.Combine(home.Path, ".claude"), Path.Combine(home.Path, ".claude-work")],
-            UsageService.FindConfigFoldersWithCredentialsFile(home.Path));
+            UsageService.FindClaudeConfigFoldersWithCredentialsFile(home.Path));
     }
 
     [Fact]

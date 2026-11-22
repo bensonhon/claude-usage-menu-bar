@@ -27,38 +27,38 @@ public sealed class AddConfigFolderException : Exception
 
 public sealed class AccountStore
 {
-    private readonly JsonFile<List<ClaudeAccount>> accountsFile;
+    private readonly JsonFile<List<Account>> accountsFile;
     private readonly string homeFolderPath;
-    private List<ClaudeAccount> accounts;
+    private List<Account> accounts;
 
     public event Action? AccountsChanged;
 
     public AccountStore(string accountsFilePath, string homeFolderPath)
     {
-        accountsFile = new JsonFile<List<ClaudeAccount>>(accountsFilePath);
+        accountsFile = new JsonFile<List<Account>>(accountsFilePath);
         this.homeFolderPath = homeFolderPath;
         accounts = AccountsIncludingDefault(accountsFile.Load() ?? [], homeFolderPath);
     }
 
-    public IReadOnlyList<ClaudeAccount> Accounts => accounts;
+    public IReadOnlyList<Account> Accounts => accounts;
 
-    public IReadOnlyList<ClaudeAccount> ShownAccounts => accounts.Where(account => account.IsShownInTray).ToList();
+    public IReadOnlyList<Account> ShownAccounts => accounts.Where(account => account.IsShownInTray).ToList();
 
-    public ClaudeAccount? SelectedAccount(string? selectedConfigFolderPath)
+    public Account? SelectedAccount(string? selectedConfigFolderPath)
     {
         var shownAccounts = ShownAccounts;
-        return shownAccounts.FirstOrDefault(account => selectedConfigFolderPath is not null && ClaudeAccount.IsSamePath(account.ConfigFolderPath, selectedConfigFolderPath))
+        return shownAccounts.FirstOrDefault(account => selectedConfigFolderPath is not null && Account.IsSamePath(account.ConfigFolderPath, selectedConfigFolderPath))
             ?? shownAccounts.FirstOrDefault();
     }
 
-    public int PositionOf(ClaudeAccount account) =>
-        Math.Max(0, accounts.FindIndex(candidate => ClaudeAccount.IsSamePath(candidate.ConfigFolderPath, account.ConfigFolderPath)));
+    public int PositionOf(Account account) =>
+        Math.Max(0, accounts.FindIndex(candidate => Account.IsSamePath(candidate.ConfigFolderPath, account.ConfigFolderPath)));
 
-    public void AddFoundConfigFolders(IEnumerable<string> foundConfigFolderPaths)
+    public void AddFoundConfigFolders(IEnumerable<string> foundConfigFolderPaths, CodingTool codingTool)
     {
         var newAccounts = foundConfigFolderPaths
-            .Where(path => !accounts.Any(account => ClaudeAccount.IsSamePath(account.ConfigFolderPath, path)))
-            .Select(path => new ClaudeAccount(path, ClaudeAccount.DefaultLabel(path), IsShownInTray: true, IsFoundAutomatically: true))
+            .Where(path => !accounts.Any(account => Account.IsSamePath(account.ConfigFolderPath, path)))
+            .Select(path => new Account(path, Account.DefaultLabel(path), IsShownInTray: true, IsFoundAutomatically: true, codingTool))
             .ToList();
         if (newAccounts.Count > 0)
         {
@@ -68,12 +68,12 @@ public sealed class AccountStore
 
     public void AddConfigFolder(string typedPath, string label, Func<string, bool> isExistingFolder)
     {
-        var configFolderPath = ClaudeAccount.NormalizedConfigFolderPath(typedPath, homeFolderPath);
-        if (!ClaudeAccount.IsFullPath(configFolderPath))
+        var configFolderPath = Account.NormalizedConfigFolderPath(typedPath, homeFolderPath);
+        if (!Account.IsFullPath(configFolderPath))
         {
             throw new AddConfigFolderException(AddConfigFolderError.PathNotAbsolute);
         }
-        if (accounts.Any(account => ClaudeAccount.IsSamePath(account.ConfigFolderPath, configFolderPath)))
+        if (accounts.Any(account => Account.IsSamePath(account.ConfigFolderPath, configFolderPath)))
         {
             throw new AddConfigFolderException(AddConfigFolderError.AlreadyAdded);
         }
@@ -82,11 +82,12 @@ public sealed class AccountStore
             throw new AddConfigFolderException(AddConfigFolderError.FolderNotFound);
         }
         var trimmedLabel = label.Trim();
-        var account = new ClaudeAccount(
+        var account = new Account(
             configFolderPath,
-            trimmedLabel.Length == 0 ? ClaudeAccount.DefaultLabel(configFolderPath) : trimmedLabel,
+            trimmedLabel.Length == 0 ? Account.DefaultLabel(configFolderPath) : trimmedLabel,
             IsShownInTray: true,
-            IsFoundAutomatically: false);
+            IsFoundAutomatically: false,
+            CodingTool.ClaudeCode);
         Update(current => current.Append(account).ToList());
     }
 
@@ -114,9 +115,9 @@ public sealed class AccountStore
         }
     }
 
-    public bool IsRemovable(ClaudeAccount account) =>
+    public bool IsRemovable(Account account) =>
         !account.IsFoundAutomatically
-        && !ClaudeAccount.IsSamePath(account.ConfigFolderPath, ClaudeAccount.DefaultConfigFolderPath(homeFolderPath));
+        && !Account.IsSamePath(account.ConfigFolderPath, Account.DefaultConfigFolderPath(homeFolderPath));
 
     public void Remove(string configFolderPath)
     {
@@ -127,25 +128,26 @@ public sealed class AccountStore
         }
     }
 
-    public static List<ClaudeAccount> AccountsIncludingDefault(List<ClaudeAccount> savedAccounts, string homeFolderPath)
+    public static List<Account> AccountsIncludingDefault(List<Account> savedAccounts, string homeFolderPath)
     {
-        var defaultConfigFolderPath = ClaudeAccount.DefaultConfigFolderPath(homeFolderPath);
-        if (savedAccounts.Any(account => ClaudeAccount.IsSamePath(account.ConfigFolderPath, defaultConfigFolderPath)))
+        var defaultConfigFolderPath = Account.DefaultConfigFolderPath(homeFolderPath);
+        if (savedAccounts.Any(account => Account.IsSamePath(account.ConfigFolderPath, defaultConfigFolderPath)))
         {
             return savedAccounts;
         }
-        var defaultAccount = new ClaudeAccount(
+        var defaultAccount = new Account(
             defaultConfigFolderPath,
-            ClaudeAccount.DefaultLabel(defaultConfigFolderPath),
+            Account.DefaultLabel(defaultConfigFolderPath),
             IsShownInTray: true,
-            IsFoundAutomatically: false);
+            IsFoundAutomatically: false,
+            CodingTool.ClaudeCode);
         return [defaultAccount, .. savedAccounts];
     }
 
     private int IndexOf(string configFolderPath) =>
-        accounts.FindIndex(account => ClaudeAccount.IsSamePath(account.ConfigFolderPath, configFolderPath));
+        accounts.FindIndex(account => Account.IsSamePath(account.ConfigFolderPath, configFolderPath));
 
-    private void Replace(string configFolderPath, Func<ClaudeAccount, ClaudeAccount> change)
+    private void Replace(string configFolderPath, Func<Account, Account> change)
     {
         var index = IndexOf(configFolderPath);
         if (index < 0)
@@ -160,14 +162,14 @@ public sealed class AccountStore
         });
     }
 
-    private static List<ClaudeAccount> Swapped(List<ClaudeAccount> current, int firstIndex, int secondIndex)
+    private static List<Account> Swapped(List<Account> current, int firstIndex, int secondIndex)
     {
         var swapped = current.ToList();
         (swapped[firstIndex], swapped[secondIndex]) = (swapped[secondIndex], swapped[firstIndex]);
         return swapped;
     }
 
-    private void Update(Func<List<ClaudeAccount>, List<ClaudeAccount>> change)
+    private void Update(Func<List<Account>, List<Account>> change)
     {
         accounts = change(accounts);
         accountsFile.Save(accounts);

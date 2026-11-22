@@ -21,7 +21,6 @@ struct ClaudeUsageMenuBarApp: App {
         _settings = StateObject(wrappedValue: settings)
         ringClickMonitor = MenuBarRingClickMonitor(
             accountRings: { Self.menuBarAccountRings(accountStore: accountStore, service: service, settings: settings) },
-            showLogo: { settings.showLogo },
             onRingClicked: { index in
                 let shownAccounts = accountStore.shownAccounts
                 guard shownAccounts.count > 1, shownAccounts.indices.contains(index) else { return }
@@ -48,8 +47,7 @@ struct ClaudeUsageMenuBarApp: App {
             UsagePopoverView(service: service, accountStore: accountStore, settings: settings)
         } label: {
             Image(nsImage: MenuBarIconRenderer.renderFull(
-                accountRings: Self.menuBarAccountRings(accountStore: accountStore, service: service, settings: settings),
-                showLogo: settings.showLogo
+                accountRings: Self.menuBarAccountRings(accountStore: accountStore, service: service, settings: settings)
             ))
         }
         .menuBarExtraStyle(.window)
@@ -59,10 +57,11 @@ struct ClaudeUsageMenuBarApp: App {
         let shownAccounts = accountStore.shownAccounts
         let isAccountColorShown = shownAccounts.count > 1
         return shownAccounts.map { account in
-            let sessionWindow = service.usage(for: account).sessionWindow
+            let usage = service.usage(for: account)
             return MenuBarAccountRing(
-                remaining: sessionWindow?.remaining,
-                resetTime: settings.showResetTime ? sessionWindow?.resetClockShort : nil,
+                remaining: usage.menuBarRingWindow?.remaining,
+                resetDay: settings.showResetTime ? usage.menuBarRingResetDay : nil,
+                resetTime: settings.showResetTime ? usage.menuBarRingWindow?.resetClockShort : nil,
                 accountColor: isAccountColorShown ? AccountColor.nsColor(position: accountStore.position(of: account)) : nil
             )
         }

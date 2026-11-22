@@ -10,7 +10,7 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>ClaudeUsageTray</AssemblyName>
     <RootNamespace>ClaudeUsageTray</RootNamespace>
-    <Version>1.7.0</Version>
+    <Version>1.8.0</Version>
     <Product>Claude Usage Monitor</Product>
     <ApplicationIcon>AppIcon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -29,6 +29,7 @@
 
   <ItemGroup>
     <Resource Include="ClaudeLogo.png" />
+    <Resource Include="ChatGPTLogo.png" />
   </ItemGroup>
 
   <ItemGroup>

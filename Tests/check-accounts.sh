@@ -6,7 +6,7 @@ OUT="$(mktemp -d)/AccountChecks"
 
 swiftc -O -sdk "$(xcrun --show-sdk-path)" \
     "${DIR}/Tests/accounts/main.swift" \
-    "${DIR}/ClaudeUsageMenuBar/ClaudeAccount.swift" \
+    "${DIR}/ClaudeUsageMenuBar/Account.swift" \
     "${DIR}/ClaudeUsageMenuBar/AccountStore.swift" \
     "${DIR}/ClaudeUsageMenuBar/MenuBarIconRenderer.swift" \
     "${DIR}/ClaudeUsageMenuBar/Settings.swift" \

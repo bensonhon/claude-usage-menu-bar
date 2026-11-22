@@ -46,11 +46,11 @@ struct UsagePopoverView: View {
         settings.darkMode ? Color(hex: "999999") : Color(hex: "666666")
     }
 
-    private var shownAccounts: [ClaudeAccount] {
+    private var shownAccounts: [Account] {
         accountStore.shownAccounts
     }
 
-    private var selectedAccount: ClaudeAccount? {
+    private var selectedAccount: Account? {
         shownAccounts.first { $0.configFolderPath == settings.selectedConfigFolderPath } ?? shownAccounts.first
     }
 
@@ -224,6 +224,7 @@ struct UsagePopoverView: View {
                 configFolderPath: account.configFolderPath,
                 label: account.labelOrFolderName,
                 color: AccountColor.color(position: accountStore.position(of: account)),
+                codingTool: account.codingTool,
                 sessionRemaining: service.usage(for: account).sessionWindow?.remaining,
                 weeklyRemaining: service.usage(for: account).weeklyWindow?.remaining
             )
@@ -256,23 +257,25 @@ struct UsagePopoverView: View {
         }
     }
 
-    private func selectedAccountSection(_ account: ClaudeAccount) -> some View {
+    private func selectedAccountSection(_ account: Account) -> some View {
         let usage = service.usage(for: account)
         return VStack(spacing: 8) {
             accountCard(account, usage: usage)
-            loginProblemNote(usage.keychainLoginStatus)
+            loginProblemNote(usage.loginStatus, codingTool: account.codingTool)
             secondarySection(usage)
             extraUsageSection(usage)
-            RecentSessionsView(
-                sessions: usage.tokenActivity.recentSessions,
-                isLoading: !usage.tokenActivityLoaded,
-                darkMode: settings.darkMode
-            )
-            TokenHistoryView(
-                activity: usage.tokenActivity,
-                isLoading: !usage.tokenActivityLoaded,
-                darkMode: settings.darkMode
-            )
+            if account.codingTool == .claudeCode {
+                RecentSessionsView(
+                    sessions: usage.tokenActivity.recentSessions,
+                    isLoading: !usage.tokenActivityLoaded,
+                    darkMode: settings.darkMode
+                )
+                TokenHistoryView(
+                    activity: usage.tokenActivity,
+                    isLoading: !usage.tokenActivityLoaded,
+                    darkMode: settings.darkMode
+                )
+            }
         }
     }
 
@@ -289,7 +292,8 @@ struct UsagePopoverView: View {
             .clipped()
             ForEach(shownAccounts) { account in
                 loginProblemNote(
-                    service.usage(for: account).keychainLoginStatus,
+                    service.usage(for: account).loginStatus,
+                    codingTool: account.codingTool,
                     accountLabel: account.labelOrFolderName,
                     dotColor: AccountColor.color(position: accountStore.position(of: account))
                 )
@@ -358,7 +362,7 @@ struct UsagePopoverView: View {
         )
     }
 
-    private func simpleAccountColumn(_ account: ClaudeAccount, usage: AccountUsage, ringSize: CGFloat, isCompact: Bool) -> some View {
+    private func simpleAccountColumn(_ account: Account, usage: AccountUsage, ringSize: CGFloat, isCompact: Bool) -> some View {
         let window = simpleModeWindow == .session ? usage.sessionWindow : usage.weeklyWindow
         return VStack(spacing: 8) {
             HStack(spacing: 4) {
@@ -400,19 +404,27 @@ struct UsagePopoverView: View {
 
     // MARK: - Main Rings
 
-    private func accountCard(_ account: ClaudeAccount, usage: AccountUsage) -> some View {
+    private func accountCard(_ account: Account, usage: AccountUsage) -> some View {
         VStack(spacing: 12) {
-            HStack(alignment: .center, spacing: 6) {
-                if isAccountColorShown {
-                    Circle()
-                        .fill(AccountColor.color(position: accountStore.position(of: account)))
-                        .frame(width: 7, height: 7)
-                }
+            HStack(alignment: .center, spacing: 8) {
+                CodingToolLogoView(codingTool: account.codingTool, size: 18, chatGPTLogoColor: textPrimary)
+                    .frame(width: 30, height: 30)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(textPrimary.opacity(0.07))
+                    )
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(account.labelOrFolderName)
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(textPrimary)
-                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        if isAccountColorShown {
+                            Circle()
+                                .fill(AccountColor.color(position: accountStore.position(of: account)))
+                                .frame(width: 7, height: 7)
+                        }
+                        Text(account.labelOrFolderName)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(textPrimary)
+                            .lineLimit(1)
+                    }
                     Text(account.displayPath)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(textMuted)
@@ -443,17 +455,18 @@ struct UsagePopoverView: View {
 
     @ViewBuilder
     private func loginProblemNote(
-        _ keychainLoginStatus: KeychainLoginStatus,
+        _ loginStatus: LoginStatus,
+        codingTool: CodingTool,
         accountLabel: String? = nil,
         dotColor: Color? = nil
     ) -> some View {
-        switch keychainLoginStatus {
+        switch loginStatus {
         case .tokenExpired:
-            loginProblemText("Login token expired. Use Claude Code with this account once, and it comes back on the next refresh.", accountLabel: accountLabel, dotColor: dotColor)
+            loginProblemText("Login token expired. Use \(codingTool.name) with this account once, and it comes back on the next refresh.", accountLabel: accountLabel, dotColor: dotColor)
         case .notFound:
-            loginProblemText("No Claude Code login found for this folder. Sign in to Claude Code with this config folder.", accountLabel: accountLabel, dotColor: dotColor)
+            loginProblemText("No \(codingTool.name) login found for this folder. Sign in to \(codingTool.name) with this config folder.", accountLabel: accountLabel, dotColor: dotColor)
         case .unreadable:
-            loginProblemText("Could not read this account's login from Keychain.", accountLabel: accountLabel, dotColor: dotColor)
+            loginProblemText(unreadableLoginText(codingTool: codingTool), accountLabel: accountLabel, dotColor: dotColor)
         case .notChecked, .found:
             EmptyView()
         }
@@ -621,13 +634,6 @@ struct UsagePopoverView: View {
                 Spacer()
             }
 
-            Toggle(isOn: $settings.showLogo) {
-                Text("Show Claude logo")
-                    .font(.system(size: 12))
-                    .foregroundColor(textPrimary)
-            }
-            .toggleStyle(.checkbox)
-
             Toggle(isOn: $settings.showResetTime) {
                 Text("Show reset time")
                     .font(.system(size: 12))
@@ -650,12 +656,26 @@ struct UsagePopoverView: View {
 
     // MARK: - Footer
 
-    private func friendlyErrorMessage(_ raw: String) -> String {
-        let lower = raw.lowercased()
-        if lower.contains("keychain") || lower.contains("token") || lower.contains("401") {
-            return "Requires Claude Code CLI. Sign in via `claude` to load usage data."
+    private func unreadableLoginText(codingTool: CodingTool) -> String {
+        switch codingTool {
+        case .claudeCode:
+            return "Could not read this account's login from Keychain."
+        case .codex:
+            return "Could not read this account's login from auth.json."
         }
-        return raw
+    }
+
+    private func friendlyErrorMessage(_ raw: String, codingTool: CodingTool) -> String {
+        let lower = raw.lowercased()
+        guard lower.contains("keychain") || lower.contains("token") || lower.contains("401") else {
+            return raw
+        }
+        switch codingTool {
+        case .claudeCode:
+            return "Requires Claude Code CLI. Sign in via `claude` to load usage data."
+        case .codex:
+            return "Requires Codex CLI. Sign in via `codex` to load usage data."
+        }
     }
 
     /// In the simple list no account is selected, so show the freshest refresh.
@@ -763,8 +783,9 @@ struct UsagePopoverView: View {
             }
 
             if accountContent == .standard,
-               case .error(let msg) = selectedUsage.loadState, !selectedUsage.keychainLoginStatus.isLoginProblem {
-                Text(friendlyErrorMessage(msg))
+               let selectedAccount,
+               case .error(let msg) = selectedUsage.loadState, !selectedUsage.loginStatus.isLoginProblem {
+                Text(friendlyErrorMessage(msg, codingTool: selectedAccount.codingTool))
                     .font(.system(size: 10))
                     .foregroundColor(textMuted)
                     .lineLimit(3)

@@ -33,7 +33,7 @@ public sealed class TrayIconController : IDisposable
 
     public void Update()
     {
-        var entries = TrayIconPlan.Entries(accountStore, usageService, settings.ShowLogo, settings.ShowResetTime, timeProvider);
+        var entries = TrayIconPlan.Entries(accountStore, usageService, settings.ShowResetTime, timeProvider);
         var entryKeys = entries.Select(KeyFor).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var staleKey in shownTrayIcons.Keys.Where(key => !entryKeys.Contains(key)).ToList())
         {
@@ -67,11 +67,11 @@ public sealed class TrayIconController : IDisposable
 
     private void OnTrayIconClicked(string key)
     {
-        var clickedAccount = accountStore.ShownAccounts.FirstOrDefault(account => ClaudeAccount.IsSamePath(account.ConfigFolderPath, key));
+        var clickedAccount = accountStore.ShownAccounts.FirstOrDefault(account => Account.IsSamePath(account.ConfigFolderPath, key));
         var selectedAccount = accountStore.SelectedAccount(settings.SelectedConfigFolderPath);
         var isOtherAccountClicked = clickedAccount is not null
             && accountStore.ShownAccounts.Count > 1
-            && !ClaudeAccount.IsSamePath(clickedAccount.ConfigFolderPath, selectedAccount?.ConfigFolderPath ?? "");
+            && !Account.IsSamePath(clickedAccount.ConfigFolderPath, selectedAccount?.ConfigFolderPath ?? "");
 
         if (!isOtherAccountClicked)
         {

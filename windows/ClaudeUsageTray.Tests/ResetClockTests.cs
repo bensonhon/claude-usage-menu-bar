@@ -15,15 +15,15 @@ public class ResetClockTests
     [InlineData("2026-11-03T16:10:00Z", "8AM")]
     public void ResetClockShortRoundsToTheNearestHour(string resetsAt, string expected)
     {
-        Assert.Equal(expected, ResetClock.ResetClockShort(new UsageWindow(10, resetsAt), NoonPacific));
+        Assert.Equal(expected, ResetClock.ResetClockShort(new UsageWindow(10, UsageWindow.ResetDateFrom(resetsAt)), NoonPacific));
     }
 
     [Fact]
     public void ResetClockStringSaysTodayTomorrowOrTheDate()
     {
-        Assert.Equal("3PM", ResetClock.ResetClockString(new UsageWindow(10, "2026-11-03T23:00:00Z"), NoonPacific));
-        Assert.Equal("Tomorrow 9AM", ResetClock.ResetClockString(new UsageWindow(10, "2026-11-04T17:00:00Z"), NoonPacific));
-        Assert.Equal("Nov 6, 7PM", ResetClock.ResetClockString(new UsageWindow(10, "2026-11-07T03:00:00+00:00"), NoonPacific));
+        Assert.Equal("3PM", ResetClock.ResetClockString(new UsageWindow(10, UsageWindow.ResetDateFrom("2026-11-03T23:00:00Z")), NoonPacific));
+        Assert.Equal("Tomorrow 9AM", ResetClock.ResetClockString(new UsageWindow(10, UsageWindow.ResetDateFrom("2026-11-04T17:00:00Z")), NoonPacific));
+        Assert.Equal("Nov 6, 7PM", ResetClock.ResetClockString(new UsageWindow(10, UsageWindow.ResetDateFrom("2026-11-07T03:00:00+00:00")), NoonPacific));
     }
 
     [Fact]
@@ -31,7 +31,7 @@ public class ResetClockTests
     {
         Assert.Equal("—", ResetClock.ResetClockShort(null, NoonPacific));
         Assert.Equal("—", ResetClock.ResetClockString(new UsageWindow(10, null), NoonPacific));
-        Assert.Equal("—", ResetClock.ResetClockString(new UsageWindow(10, "not a date"), NoonPacific));
+        Assert.Equal("—", ResetClock.ResetClockString(new UsageWindow(10, UsageWindow.ResetDateFrom("not a date")), NoonPacific));
     }
 
     [Theory]

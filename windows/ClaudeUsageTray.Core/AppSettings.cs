@@ -13,7 +13,6 @@ public sealed class AppSettings
         saved = settingsFile.Load() ?? new SavedSettings();
     }
 
-    public bool ShowLogo { get => saved.ShowLogo; set => Update(saved with { ShowLogo = value }); }
     public bool ShowResetTime { get => saved.ShowResetTime; set => Update(saved with { ShowResetTime = value }); }
     public bool DarkMode { get => saved.DarkMode; set => Update(saved with { DarkMode = value }); }
     public string? SelectedConfigFolderPath { get => saved.SelectedConfigFolderPath; set => Update(saved with { SelectedConfigFolderPath = value }); }
@@ -32,7 +31,6 @@ public sealed class AppSettings
 
     public sealed record SavedSettings
     {
-        public bool ShowLogo { get; init; } = true;
         public bool ShowResetTime { get; init; } = true;
         public bool DarkMode { get; init; } = true;
         public string? SelectedConfigFolderPath { get; init; }

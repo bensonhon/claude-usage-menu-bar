@@ -59,15 +59,15 @@ public sealed class FlyoutView
         reduceMotion = !SystemParameters.ClientAreaAnimation;
     }
 
-    private IReadOnlyList<ClaudeAccount> ShownAccounts => accountStore.ShownAccounts;
+    private IReadOnlyList<Account> ShownAccounts => accountStore.ShownAccounts;
 
     private bool IsAccountColorShown => ShownAccounts.Count > 1;
 
-    private ClaudeAccount? SelectedAccount => accountStore.SelectedAccount(settings.SelectedConfigFolderPath);
+    private Account? SelectedAccount => accountStore.SelectedAccount(settings.SelectedConfigFolderPath);
 
     private FlyoutAccountContent AccountContent => FlyoutAccountContentChooser.Choose(settings.MultiAccountSimpleMode, ShownAccounts.Count);
 
-    private Brush AccountColorBrush(ClaudeAccount account) => Theme.BrushFrom(AccountColor.HexFor(accountStore.PositionOf(account)));
+    private Brush AccountColorBrush(Account account) => Theme.BrushFrom(AccountColor.HexFor(accountStore.PositionOf(account)));
 
     public FrameworkElement Build()
     {
@@ -137,6 +137,7 @@ public sealed class FlyoutView
                 account.ConfigFolderPath,
                 account.LabelOrFolderName,
                 AccountColorBrush(account),
+                account.CodingTool,
                 usageService.UsageFor(account).SessionWindow?.Remaining,
                 usageService.UsageFor(account).WeeklyWindow?.Remaining)).ToList();
             stack.Children.Add(AccountTabsView.Make(tabs, SelectedAccount?.ConfigFolderPath, theme, SelectAccount));
@@ -161,8 +162,8 @@ public sealed class FlyoutView
     private void SelectAccount(string configFolderPath)
     {
         var shownAccounts = ShownAccounts.ToList();
-        var selectedIndex = Math.Max(0, shownAccounts.FindIndex(account => SelectedAccount is { } selected && ClaudeAccount.IsSamePath(account.ConfigFolderPath, selected.ConfigFolderPath)));
-        var newIndex = Math.Max(0, shownAccounts.FindIndex(account => ClaudeAccount.IsSamePath(account.ConfigFolderPath, configFolderPath)));
+        var selectedIndex = Math.Max(0, shownAccounts.FindIndex(account => SelectedAccount is { } selected && Account.IsSamePath(account.ConfigFolderPath, selected.ConfigFolderPath)));
+        var newIndex = Math.Max(0, shownAccounts.FindIndex(account => Account.IsSamePath(account.ConfigFolderPath, configFolderPath)));
         if (newIndex == selectedIndex)
         {
             return;
@@ -171,40 +172,49 @@ public sealed class FlyoutView
         settings.SelectedConfigFolderPath = configFolderPath;
     }
 
-    private FrameworkElement SelectedAccountSection(ClaudeAccount account)
+    private FrameworkElement SelectedAccountSection(Account account)
     {
         var usage = usageService.UsageFor(account);
         var stack = new StackPanel();
         AddSpaced(stack, AccountCard(account, usage));
-        AddSpaced(stack, LoginProblemNote.Make(usage.LoginStatus, theme));
+        AddSpaced(stack, LoginProblemNote.Make(usage.LoginStatus, account.CodingTool, theme));
         AddSpaced(stack, ModelUsageSection.Make(usage, theme, timeProvider));
         AddSpaced(stack, ExtraUsageSection.Make(usage, theme));
-        AddSpaced(stack, RecentSessionsView.Make(usage.TokenActivity.RecentSessions, !usage.TokenActivityLoaded, theme, timeProvider,
-            () => viewState.RecentSessionsTopIndexByConfigFolderPath.GetValueOrDefault(account.ConfigFolderPath),
-            topIndex => viewState.RecentSessionsTopIndexByConfigFolderPath[account.ConfigFolderPath] = topIndex));
-        AddSpaced(stack, TokenHistoryView.Make(usage.TokenActivity, !usage.TokenActivityLoaded, theme));
+        if (account.CodingTool == CodingTool.ClaudeCode)
+        {
+            AddSpaced(stack, RecentSessionsView.Make(usage.TokenActivity.RecentSessions, !usage.TokenActivityLoaded, theme, timeProvider,
+                () => viewState.RecentSessionsTopIndexByConfigFolderPath.GetValueOrDefault(account.ConfigFolderPath),
+                topIndex => viewState.RecentSessionsTopIndexByConfigFolderPath[account.ConfigFolderPath] = topIndex));
+            AddSpaced(stack, TokenHistoryView.Make(usage.TokenActivity, !usage.TokenActivityLoaded, theme));
+        }
         return stack;
     }
 
-    private FrameworkElement AccountCard(ClaudeAccount account, AccountUsage usage)
+    private FrameworkElement AccountCard(Account account, AccountUsage usage)
     {
         var stack = new StackPanel();
         var header = new DockPanel { Margin = new Thickness(4, 0, 4, 12) };
-        if (IsAccountColorShown)
-        {
-            var dot = Text.Circle(AccountColorBrush(account));
-            dot.Margin = new Thickness(0, 0, 6, 0);
-            DockPanel.SetDock(dot, Dock.Left);
-            header.Children.Add(dot);
-        }
+        var logoTile = Cards.Make(CodingToolLogo.Make(account.CodingTool, 18, theme.TextPrimary), Theme.Tinted(theme.TextPrimary, 0.07), new Thickness(6), 8);
+        logoTile.Margin = new Thickness(0, 0, 8, 0);
+        logoTile.VerticalAlignment = VerticalAlignment.Center;
+        DockPanel.SetDock(logoTile, Dock.Left);
+        header.Children.Add(logoTile);
         var planColor = usage.HasUsageData ? Theme.Accent : theme.TextMuted;
         var plan = Cards.Make(Text.Make(usage.HasUsageData ? usage.PlanName : "—", 11, FontWeights.SemiBold, planColor), Theme.Tinted(planColor, 0.15), new Thickness(10, 4, 10, 4), 12);
         plan.VerticalAlignment = VerticalAlignment.Center;
         DockPanel.SetDock(plan, Dock.Right);
         header.Children.Add(plan);
         var names = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        names.Children.Add(Text.Make(account.LabelOrFolderName, 13, FontWeights.Bold, theme.TextPrimary));
-        var path = Text.Make(ClaudeAccount.DisplayPath(account.ConfigFolderPath, homeFolderPath), 10, FontWeights.Normal, theme.TextMuted, mono: true, margin: new Thickness(0, 1, 0, 0));
+        var nameRow = new StackPanel { Orientation = Orientation.Horizontal };
+        if (IsAccountColorShown)
+        {
+            var dot = Text.Circle(AccountColorBrush(account));
+            dot.Margin = new Thickness(0, 0, 6, 0);
+            nameRow.Children.Add(dot);
+        }
+        nameRow.Children.Add(Text.Make(account.LabelOrFolderName, 13, FontWeights.Bold, theme.TextPrimary));
+        names.Children.Add(nameRow);
+        var path = Text.Make(Account.DisplayPath(account.ConfigFolderPath, homeFolderPath), 10, FontWeights.Normal, theme.TextMuted, mono: true, margin: new Thickness(0, 1, 0, 0));
         path.ToolTip = account.ConfigFolderPath;
         names.Children.Add(path);
         header.Children.Add(names);
@@ -265,7 +275,7 @@ public sealed class FlyoutView
 
         foreach (var account in shownAccounts)
         {
-            AddSpaced(stack, LoginProblemNote.Make(usageService.UsageFor(account).LoginStatus, theme, account.LabelOrFolderName, AccountColorBrush(account)));
+            AddSpaced(stack, LoginProblemNote.Make(usageService.UsageFor(account).LoginStatus, account.CodingTool, theme, account.LabelOrFolderName, AccountColorBrush(account)));
         }
         return stack;
     }
@@ -300,7 +310,6 @@ public sealed class FlyoutView
         title.Children.Add(Icons.Make(Icons.Gear, 11, theme.TextMuted));
         title.Children.Add(Text.Make("Tray Options", 13, FontWeights.SemiBold, theme.TextPrimary, margin: new Thickness(6, 0, 0, 0)));
         stack.Children.Add(title);
-        stack.Children.Add(SettingCheckBox("Show Claude logo", settings.ShowLogo, isChecked => settings.ShowLogo = isChecked));
         stack.Children.Add(SettingCheckBox("Show reset time", settings.ShowResetTime, isChecked => settings.ShowResetTime = isChecked));
         stack.Children.Add(new Border { Height = 1, Background = theme.Hairline, Margin = new Thickness(0, 8, 0, 8) });
         stack.Children.Add(new AccountListView(accountStore, usageService, viewState.AccountList, theme, homeFolderPath, rerender).Make());
@@ -367,7 +376,7 @@ public sealed class FlyoutView
             && usageService.UsageFor(account) is { LoadState: UsageLoadState.Failed failed } usage
             && !usage.LoginStatus.IsLoginProblem())
         {
-            var error = Text.Make(UsageText.FriendlyErrorMessage(failed.Message), 10, FontWeights.Normal, theme.TextMuted, center: true, margin: new Thickness(0, 8, 0, 0));
+            var error = Text.Make(UsageText.FriendlyErrorMessage(failed.Message, account.CodingTool), 10, FontWeights.Normal, theme.TextMuted, center: true, margin: new Thickness(0, 8, 0, 0));
             error.TextWrapping = TextWrapping.Wrap;
             error.TextTrimming = TextTrimming.CharacterEllipsis;
             error.MaxHeight = 42;

@@ -84,21 +84,31 @@ public static class UsageText
         return $"Updated {minutes / 60} hr ago";
     }
 
-    public static string FriendlyErrorMessage(string rawMessage)
+    public static string FriendlyErrorMessage(string rawMessage, CodingTool codingTool)
     {
         var lowerMessage = rawMessage.ToLowerInvariant();
-        if (lowerMessage.Contains("credentials") || lowerMessage.Contains("token") || lowerMessage.Contains("401"))
+        if (!(lowerMessage.Contains("credentials") || lowerMessage.Contains("token") || lowerMessage.Contains("401")))
         {
-            return "Requires Claude Code CLI. Sign in via claude to load usage data.";
+            return rawMessage;
         }
-        return rawMessage;
+        return codingTool switch
+        {
+            CodingTool.ClaudeCode => "Requires Claude Code CLI. Sign in via claude to load usage data.",
+            CodingTool.Codex => "Requires Codex CLI. Sign in via codex to load usage data.",
+            _ => throw new ArgumentOutOfRangeException(nameof(codingTool), codingTool, null),
+        };
     }
 
-    public static string? LoginProblemText(LoginStatus loginStatus) => loginStatus switch
+    public static string? LoginProblemText(LoginStatus loginStatus, CodingTool codingTool) => loginStatus switch
     {
-        LoginStatus.TokenExpired => "Login token expired. Use Claude Code with this account once, and it comes back on the next refresh.",
-        LoginStatus.NotFound => "No Claude Code login found for this folder. Sign in to Claude Code with this config folder.",
-        LoginStatus.Unreadable => "Could not read this account's login from .credentials.json.",
+        LoginStatus.TokenExpired => $"Login token expired. Use {codingTool.Name()} with this account once, and it comes back on the next refresh.",
+        LoginStatus.NotFound => $"No {codingTool.Name()} login found for this folder. Sign in to {codingTool.Name()} with this config folder.",
+        LoginStatus.Unreadable => codingTool switch
+        {
+            CodingTool.ClaudeCode => "Could not read this account's login from .credentials.json.",
+            CodingTool.Codex => "Could not read this account's login from auth.json.",
+            _ => throw new ArgumentOutOfRangeException(nameof(codingTool), codingTool, null),
+        },
         _ => null,
     };
 
@@ -114,9 +124,9 @@ public static class UsageText
 
     public static string LoginFilePreview(string typedPath, string homeFolderPath)
     {
-        var configFolderPath = ClaudeAccount.NormalizedConfigFolderPath(typedPath, homeFolderPath);
-        return ClaudeAccount.IsFullPath(configFolderPath)
-            ? $"Login file: {CredentialsFile.PathFor(configFolderPath)}"
+        var configFolderPath = Account.NormalizedConfigFolderPath(typedPath, homeFolderPath);
+        return Account.IsFullPath(configFolderPath)
+            ? $"Login file: {ClaudeCredentialsFile.PathFor(configFolderPath)}"
             : "Type the folder you set as CLAUDE_CONFIG_DIR";
     }
 }
@@ -124,19 +134,19 @@ public static class UsageText
 public abstract record TrayIconEntry
 {
     public sealed record Logo : TrayIconEntry;
-    public sealed record AccountRing(ClaudeAccount Account, double? Remaining, string? AccountColorHex, string TooltipText) : TrayIconEntry;
+    public sealed record AccountRing(Account Account, double? Remaining, string? AccountColorHex, string TooltipText) : TrayIconEntry;
 }
 
 public static class TrayIconPlan
 {
     public const int MaximumTooltipLength = 127;
 
-    public static IReadOnlyList<TrayIconEntry> Entries(AccountStore accountStore, UsageService usageService, bool showLogo, bool showResetTime, TimeProvider timeProvider)
+    public static IReadOnlyList<TrayIconEntry> Entries(AccountStore accountStore, UsageService usageService, bool showResetTime, TimeProvider timeProvider)
     {
         var shownAccounts = accountStore.ShownAccounts;
         var isAccountColorShown = shownAccounts.Count > 1;
         var entries = new List<TrayIconEntry>();
-        if (showLogo || shownAccounts.Count == 0)
+        if (shownAccounts.Count == 0)
         {
             entries.Add(new TrayIconEntry.Logo());
         }
@@ -145,19 +155,19 @@ public static class TrayIconPlan
             var usage = usageService.UsageFor(account);
             entries.Add(new TrayIconEntry.AccountRing(
                 account,
-                usage.SessionWindow?.Remaining,
+                usage.TrayRingWindow?.Remaining,
                 isAccountColorShown ? AccountColor.HexFor(accountStore.PositionOf(account)) : null,
                 TooltipText(account, usage, showResetTime, timeProvider)));
         }
         return entries;
     }
 
-    public static string TooltipText(ClaudeAccount account, AccountUsage usage, bool showResetTime, TimeProvider timeProvider)
+    public static string TooltipText(Account account, AccountUsage usage, bool showResetTime, TimeProvider timeProvider)
     {
         var lines = new List<string> { account.LabelOrFolderName };
         if (!usage.HasUsageData)
         {
-            lines.Add(UsageText.LoginProblemText(usage.LoginStatus) is null ? "No usage data yet" : "Login problem: open for details");
+            lines.Add(UsageText.LoginProblemText(usage.LoginStatus, account.CodingTool) is null ? "No usage data yet" : "Login problem: open for details");
         }
         else
         {

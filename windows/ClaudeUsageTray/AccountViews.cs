@@ -6,7 +6,7 @@ using ClaudeUsageTray.Core;
 
 namespace ClaudeUsageTray;
 
-public sealed record AccountTab(string ConfigFolderPath, string Label, System.Windows.Media.Brush Color, double? SessionRemaining, double? WeeklyRemaining);
+public sealed record AccountTab(string ConfigFolderPath, string Label, System.Windows.Media.Brush Color, CodingTool CodingTool, double? SessionRemaining, double? WeeklyRemaining);
 
 public static class AccountTabsView
 {
@@ -16,12 +16,16 @@ public static class AccountTabsView
         var grid = new UniformGrid { Rows = 1, Columns = tabs.Count };
         foreach (var tab in tabs)
         {
-            var isSelected = selectedConfigFolderPath is not null && ClaudeAccount.IsSamePath(tab.ConfigFolderPath, selectedConfigFolderPath);
+            var isSelected = selectedConfigFolderPath is not null && Account.IsSamePath(tab.ConfigFolderPath, selectedConfigFolderPath);
             var content = new DockPanel { HorizontalAlignment = HorizontalAlignment.Center, LastChildFill = true };
             var dot = Text.Circle(tab.Color);
             dot.Margin = new Thickness(0, 0, 4, 0);
             DockPanel.SetDock(dot, Dock.Left);
             content.Children.Add(dot);
+            var logo = CodingToolLogo.Make(tab.CodingTool, 12, isSelected ? theme.TextPrimary : theme.TextMuted);
+            logo.Margin = new Thickness(0, 0, 4, 0);
+            DockPanel.SetDock(logo, Dock.Left);
+            content.Children.Add(logo);
             var remaining = RemainingView(tab, isStacked, theme);
             remaining.Margin = new Thickness(4, 0, 0, 0);
             DockPanel.SetDock(remaining, Dock.Right);
@@ -161,7 +165,7 @@ public sealed class AccountListView
         return button;
     }
 
-    private FrameworkElement AccountRow(ClaudeAccount account)
+    private FrameworkElement AccountRow(Account account)
     {
         var row = new DockPanel();
         var toggle = new CheckBox
@@ -198,7 +202,7 @@ public sealed class AccountListView
         return Cards.Make(row, theme.Row, new Thickness(8), 9);
     }
 
-    private FrameworkElement EditingRow(ClaudeAccount account)
+    private FrameworkElement EditingRow(Account account)
     {
         var position = accountStore.PositionOf(account);
         var row = new DockPanel();
@@ -221,7 +225,7 @@ public sealed class AccountListView
         }
 
         var fields = new StackPanel();
-        var labelField = TextField(account.Label, ClaudeAccount.DefaultLabel(account.ConfigFolderPath), LabelFieldKey(account.ConfigFolderPath), mono: false);
+        var labelField = TextField(account.Label, Account.DefaultLabel(account.ConfigFolderPath), LabelFieldKey(account.ConfigFolderPath), mono: false);
         labelField.LostKeyboardFocus += (_, _) => CommitLabel(account, labelField.Text);
         labelField.KeyDown += (_, keyEvent) =>
         {
@@ -236,9 +240,9 @@ public sealed class AccountListView
         return Cards.Make(row, theme.Row, new Thickness(8), 9);
     }
 
-    private void CommitLabel(ClaudeAccount account, string label)
+    private void CommitLabel(Account account, string label)
     {
-        var current = accountStore.Accounts.FirstOrDefault(candidate => ClaudeAccount.IsSamePath(candidate.ConfigFolderPath, account.ConfigFolderPath));
+        var current = accountStore.Accounts.FirstOrDefault(candidate => Account.IsSamePath(candidate.ConfigFolderPath, account.ConfigFolderPath));
         if (current is not null && current.Label != label)
         {
             accountStore.SetLabel(label, account.ConfigFolderPath);
@@ -333,7 +337,7 @@ public sealed class AccountListView
 
     private TextBlock PathText(string configFolderPath, Thickness margin)
     {
-        var displayPath = ClaudeAccount.DisplayPath(configFolderPath, homeFolderPath);
+        var displayPath = Account.DisplayPath(configFolderPath, homeFolderPath);
         var path = Text.Make(displayPath, 10, FontWeights.Normal, theme.TextMuted, margin: margin, mono: true);
         path.ToolTip = configFolderPath;
         return path;

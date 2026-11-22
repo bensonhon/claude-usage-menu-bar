@@ -20,7 +20,7 @@ enum AddConfigFolderError: LocalizedError, Equatable {
 
 @MainActor
 final class AccountStore: ObservableObject {
-    @Published private(set) var accounts: [ClaudeAccount] {
+    @Published private(set) var accounts: [Account] {
         didSet { saveAccounts() }
     }
 
@@ -28,31 +28,32 @@ final class AccountStore: ObservableObject {
     private let userDefaults: UserDefaults
     private let homeFolderPath: String
 
-    init(userDefaults: UserDefaults = .standard, homeFolderPath: String = ClaudeAccount.currentHomeFolderPath) {
+    init(userDefaults: UserDefaults = .standard, homeFolderPath: String = Account.currentHomeFolderPath) {
         self.userDefaults = userDefaults
         self.homeFolderPath = homeFolderPath
         let savedAccounts = Self.loadSavedAccounts(from: userDefaults)
         self.accounts = Self.accountsIncludingDefault(savedAccounts, homeFolderPath: homeFolderPath)
     }
 
-    var shownAccounts: [ClaudeAccount] {
+    var shownAccounts: [Account] {
         accounts.filter(\.isShownInMenuBar)
     }
 
-    func position(of account: ClaudeAccount) -> Int {
+    func position(of account: Account) -> Int {
         accounts.firstIndex { $0.configFolderPath == account.configFolderPath } ?? 0
     }
 
-    func addFoundConfigFolders(_ foundConfigFolderPaths: [String]) {
+    func addFoundConfigFolders(_ foundConfigFolderPaths: [String], codingTool: CodingTool) {
         let knownConfigFolderPaths = Set(accounts.map(\.configFolderPath))
         let newAccounts = foundConfigFolderPaths
             .filter { !knownConfigFolderPaths.contains($0) }
             .map {
-                ClaudeAccount(
+                Account(
                     configFolderPath: $0,
-                    label: ClaudeAccount.defaultLabel(configFolderPath: $0),
+                    label: Account.defaultLabel(configFolderPath: $0),
                     isShownInMenuBar: true,
-                    isFoundAutomatically: true
+                    isFoundAutomatically: true,
+                    codingTool: codingTool
                 )
             }
         if !newAccounts.isEmpty {
@@ -61,7 +62,7 @@ final class AccountStore: ObservableObject {
     }
 
     func addConfigFolder(typedPath: String, label: String, isExistingFolder: (String) -> Bool) throws {
-        let configFolderPath = ClaudeAccount.normalizedConfigFolderPath(typedPath: typedPath, homeFolderPath: homeFolderPath)
+        let configFolderPath = Account.normalizedConfigFolderPath(typedPath: typedPath, homeFolderPath: homeFolderPath)
         guard configFolderPath.hasPrefix("/") else {
             throw AddConfigFolderError.pathNotAbsolute
         }
@@ -72,11 +73,12 @@ final class AccountStore: ObservableObject {
             throw AddConfigFolderError.folderNotFound
         }
         let trimmedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        accounts.append(ClaudeAccount(
+        accounts.append(Account(
             configFolderPath: configFolderPath,
-            label: trimmedLabel.isEmpty ? ClaudeAccount.defaultLabel(configFolderPath: configFolderPath) : trimmedLabel,
+            label: trimmedLabel.isEmpty ? Account.defaultLabel(configFolderPath: configFolderPath) : trimmedLabel,
             isShownInMenuBar: true,
-            isFoundAutomatically: false
+            isFoundAutomatically: false,
+            codingTool: .claudeCode
         ))
     }
 
@@ -100,9 +102,9 @@ final class AccountStore: ObservableObject {
         accounts.swapAt(index, index + 1)
     }
 
-    func isRemovable(_ account: ClaudeAccount) -> Bool {
+    func isRemovable(_ account: Account) -> Bool {
         !account.isFoundAutomatically
-            && account.configFolderPath != ClaudeAccount.defaultConfigFolderPath(homeFolderPath: homeFolderPath)
+            && account.configFolderPath != Account.defaultConfigFolderPath(homeFolderPath: homeFolderPath)
     }
 
     func remove(configFolderPath: String) {
@@ -119,21 +121,22 @@ final class AccountStore: ObservableObject {
         userDefaults.set(data, forKey: Self.accountsKey)
     }
 
-    private static func loadSavedAccounts(from userDefaults: UserDefaults) -> [ClaudeAccount] {
+    private static func loadSavedAccounts(from userDefaults: UserDefaults) -> [Account] {
         guard let data = userDefaults.data(forKey: accountsKey) else { return [] }
-        return (try? JSONDecoder().decode([ClaudeAccount].self, from: data)) ?? []
+        return (try? JSONDecoder().decode([Account].self, from: data)) ?? []
     }
 
-    static func accountsIncludingDefault(_ savedAccounts: [ClaudeAccount], homeFolderPath: String) -> [ClaudeAccount] {
-        let defaultConfigFolderPath = ClaudeAccount.defaultConfigFolderPath(homeFolderPath: homeFolderPath)
+    static func accountsIncludingDefault(_ savedAccounts: [Account], homeFolderPath: String) -> [Account] {
+        let defaultConfigFolderPath = Account.defaultConfigFolderPath(homeFolderPath: homeFolderPath)
         if savedAccounts.contains(where: { $0.configFolderPath == defaultConfigFolderPath }) {
             return savedAccounts
         }
-        let defaultAccount = ClaudeAccount(
+        let defaultAccount = Account(
             configFolderPath: defaultConfigFolderPath,
-            label: ClaudeAccount.defaultLabel(configFolderPath: defaultConfigFolderPath),
+            label: Account.defaultLabel(configFolderPath: defaultConfigFolderPath),
             isShownInMenuBar: true,
-            isFoundAutomatically: false
+            isFoundAutomatically: false,
+            codingTool: .claudeCode
         )
         return [defaultAccount] + savedAccounts
     }

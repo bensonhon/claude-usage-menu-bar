@@ -83,6 +83,17 @@ function Write-Credentials([string] $configFolderPath, [string] $accessToken, [s
     Write-TextFile (Join-Path $configFolderPath '.credentials.json') ($credentials | ConvertTo-Json -Depth 4)
 }
 
+function ConvertTo-Base64Url([string] $text) {
+    [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($text)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+function Write-CodexAuth([string] $configFolderPath, [string] $chatGPTAccountId) {
+    $expiry = [DateTimeOffset]::UtcNow.AddDays(9).ToUnixTimeSeconds()
+    $accessToken = (ConvertTo-Base64Url '{"alg":"RS256"}') + '.' + (ConvertTo-Base64Url "{`"exp`":$expiry}") + '.ui-check-signature'
+    $auth = @{ auth_mode = 'chatgpt'; OPENAI_API_KEY = $null; tokens = @{ access_token = $accessToken; refresh_token = 'ui-check-refresh'; account_id = $chatGPTAccountId } }
+    Write-TextFile (Join-Path $configFolderPath 'auth.json') ($auth | ConvertTo-Json -Depth 4)
+}
+
 function Write-TokenHistory([string] $configFolderPath, [string[]] $projectNames, [string[]] $models) {
     $lines = New-Object System.Collections.Generic.List[string]
     $now = [DateTimeOffset]::UtcNow
@@ -113,11 +124,11 @@ function Start-FakeUsageApi {
     $certificatePath = Join-Path $workFolderPath 'platform.claude.com.pem'
     $keyPath = Join-Path $workFolderPath 'platform.claude.com.key'
     $derCertificatePath = Join-Path $workFolderPath 'platform.claude.com.cer'
-    & $openSslPath req -x509 -newkey rsa:2048 -nodes -keyout $keyPath -out $certificatePath -days 2 -subj '/CN=platform.claude.com' -addext 'subjectAltName=DNS:platform.claude.com'
+    & $openSslPath req -x509 -newkey rsa:2048 -nodes -keyout $keyPath -out $certificatePath -days 2 -subj '/CN=platform.claude.com' -addext 'subjectAltName=DNS:platform.claude.com,DNS:chatgpt.com'
     if ($LASTEXITCODE -ne 0) { throw 'openssl could not make the test certificate' }
     & $openSslPath x509 -in $certificatePath -outform der -out $derCertificatePath
     Import-Certificate -FilePath $derCertificatePath -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
-    Add-Content -Path "$env:windir\System32\drivers\etc\hosts" -Value "`r`n127.0.0.1 platform.claude.com"
+    Add-Content -Path "$env:windir\System32\drivers\etc\hosts" -Value "`r`n127.0.0.1 platform.claude.com`r`n127.0.0.1 chatgpt.com"
     ipconfig /flushdns | Out-Null
     $server = Start-Process python -ArgumentList @((Join-Path $uiCheckFolderPath 'fake_usage_api.py'), $certificatePath, $keyPath) -PassThru -WindowStyle Hidden
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -282,11 +293,13 @@ catch {
 $homeFolderPath = $env:USERPROFILE
 $mainConfigFolderPath = Join-Path $homeFolderPath '.claude'
 $workConfigFolderPath = Join-Path $homeFolderPath '.claude-work'
+$codexConfigFolderPath = Join-Path $homeFolderPath '.codex'
 $appDataFolderPath = Join-Path $env:APPDATA 'ClaudeUsageTray'
-Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $mainConfigFolderPath, $workConfigFolderPath, $appDataFolderPath
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $mainConfigFolderPath, $workConfigFolderPath, $codexConfigFolderPath, $appDataFolderPath
 
 Write-Credentials $mainConfigFolderPath 'ui-check-main-token' 'max'
 Write-Credentials $workConfigFolderPath 'ui-check-work-token' 'pro'
+Write-CodexAuth $codexConfigFolderPath 'ui-check-codex-account'
 Write-TokenHistory $mainConfigFolderPath @('billing-api', 'web-dashboard', 'infra-scripts', 'mobile-app') @('claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5')
 Write-TokenHistory $workConfigFolderPath @('data-pipeline', 'docs-site') @('claude-sonnet-5-5')
 $fakeUsageApi = Start-FakeUsageApi
@@ -323,6 +336,10 @@ Invoke-FlyoutButton $process 'Done'
 $workRingButton = Find-TrayButton 'claude-work'
 Click-Element $workRingButton
 Save-FlyoutScreenshot $process '10-flyout-work-account-from-its-ring'
+
+$codexRingButton = Find-TrayButton 'codex'
+Click-Element $codexRingButton
+Save-FlyoutScreenshot $process '10b-flyout-codex-account-from-its-ring'
 
 [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
 Start-Sleep -Seconds 1

@@ -1,0 +1,42 @@
+import SwiftUI
+import AppKit
+
+enum CodingToolLogo {
+    private static let chatGPTLogoBase64 = "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"
+
+    static let claudeLogo: NSImage? = MenuBarIconRenderer.claudeLogo()
+
+    static let chatGPTLogo: NSImage? = {
+        guard let data = Data(base64Encoded: chatGPTLogoBase64),
+              let image = NSImage(data: data) else { return nil }
+        image.isTemplate = true
+        return image
+    }()
+
+    static func logo(for codingTool: CodingTool) -> NSImage? {
+        switch codingTool {
+        case .claudeCode:
+            return claudeLogo
+        case .codex:
+            return chatGPTLogo
+        }
+    }
+}
+
+struct CodingToolLogoView: View {
+    let codingTool: CodingTool
+    let size: CGFloat
+    let chatGPTLogoColor: Color
+
+    var body: some View {
+        if let logo = CodingToolLogo.logo(for: codingTool) {
+            Image(nsImage: logo)
+                .renderingMode(codingTool == .codex ? .template : .original)
+                .resizable()
+                .interpolation(.high)
+                .foregroundColor(chatGPTLogoColor)
+                .frame(width: size, height: size)
+                .help(codingTool.name)
+        }
+    }
+}

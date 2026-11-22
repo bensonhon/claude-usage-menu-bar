@@ -13,7 +13,8 @@ final class UsageService: ObservableObject {
 
     private var refreshTimer: Timer?
     private var shownAccountsSubscription: AnyCancellable?
-    private let apiURL = URL(string: "https://platform.claude.com/api/oauth/usage")!
+    private let claudeUsageURL = URL(string: "https://platform.claude.com/api/oauth/usage")!
+    private let codexUsageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
 
     init(accountStore: AccountStore) {
         self.accountStore = accountStore
@@ -29,16 +30,20 @@ final class UsageService: ObservableObject {
 
     // MARK: - Public
 
-    func usage(for account: ClaudeAccount) -> AccountUsage {
+    func usage(for account: Account) -> AccountUsage {
         usageByConfigFolderPath[account.configFolderPath] ?? AccountUsage()
     }
 
     func refresh(force: Bool = false) async {
-        let homeFolderPath = ClaudeAccount.currentHomeFolderPath
-        let foundConfigFolderPaths = await Task.detached(priority: .userInitiated) {
-            Self.findConfigFoldersWithKeychainLogin(homeFolderPath: homeFolderPath)
+        let homeFolderPath = Account.currentHomeFolderPath
+        let claudeConfigFolderPaths = await Task.detached(priority: .userInitiated) {
+            Self.findClaudeConfigFoldersWithKeychainLogin(homeFolderPath: homeFolderPath)
         }.value
-        accountStore.addFoundConfigFolders(foundConfigFolderPaths)
+        let codexConfigFolderPaths = await Task.detached(priority: .userInitiated) {
+            Self.findCodexConfigFoldersWithAuthFile(homeFolderPath: homeFolderPath)
+        }.value
+        accountStore.addFoundConfigFolders(claudeConfigFolderPaths, codingTool: .claudeCode)
+        accountStore.addFoundConfigFolders(codexConfigFolderPaths, codingTool: .codex)
 
         await withTaskGroup(of: Void.self) { group in
             for account in accountStore.accounts {
@@ -47,21 +52,26 @@ final class UsageService: ObservableObject {
         }
     }
 
-    private func refresh(account: ClaudeAccount, force: Bool) async {
+    private func refresh(account: Account, force: Bool) async {
         let configFolderPath = account.configFolderPath
-        let keychainServiceName = account.keychainServiceName
 
         guard account.isShownInMenuBar else {
-            let keychainLoginStatus = await Task.detached(priority: .utility) {
-                Self.readKeychainLoginStatus(keychainServiceName: keychainServiceName)
+            let loginStatus = await Task.detached(priority: .utility) {
+                Self.readLoginStatus(account: account)
             }.value
-            usageByConfigFolderPath[configFolderPath, default: AccountUsage()].keychainLoginStatus = keychainLoginStatus
+            usageByConfigFolderPath[configFolderPath, default: AccountUsage()].loginStatus = loginStatus
             return
         }
 
+        let codingTool = account.codingTool
         let projectsFolderURL = account.projectsFolderURL
         async let activityTask = Task.detached(priority: .userInitiated) {
-            await Self.parseLocalTokenHistory(projectsFolderURL: projectsFolderURL)
+            switch codingTool {
+            case .claudeCode:
+                return await Self.parseLocalTokenHistory(projectsFolderURL: projectsFolderURL)
+            case .codex:
+                return TokenActivity()
+            }
         }.value
 
         let lastUpdated = usageByConfigFolderPath[configFolderPath]?.lastUpdated
@@ -70,22 +80,18 @@ final class UsageService: ObservableObject {
         if !skipNetwork {
             usageByConfigFolderPath[configFolderPath, default: AccountUsage()].loadState = .loading
             do {
-                let (token, plan) = try await Task.detached(priority: .userInitiated) {
-                    try Self.fetchOAuthToken(keychainServiceName: keychainServiceName)
-                }.value
-                usageByConfigFolderPath[configFolderPath, default: AccountUsage()].keychainLoginStatus = .found
-                let response = try await fetchUsage(token: token)
+                let fetchedUsage = try await fetchUsage(account: account)
                 var usage = usageByConfigFolderPath[configFolderPath] ?? AccountUsage()
-                usage.windows = response.windows
-                usage.extraUsage = response.extraUsage
-                usage.planName = plan
+                usage.windows = fetchedUsage.windows
+                usage.extraUsage = fetchedUsage.extraUsage
+                usage.planName = fetchedUsage.planName
                 usage.lastUpdated = Date()
                 usage.loadState = .loaded
                 usageByConfigFolderPath[configFolderPath] = usage
             } catch let error as UsageError {
                 var usage = usageByConfigFolderPath[configFolderPath] ?? AccountUsage()
-                if let keychainLoginStatus = error.keychainLoginStatus {
-                    usage.keychainLoginStatus = keychainLoginStatus
+                if let loginStatus = error.loginStatus {
+                    usage.loginStatus = loginStatus
                 }
                 usage.loadState = .error(error.localizedDescription)
                 usageByConfigFolderPath[configFolderPath] = usage
@@ -101,22 +107,63 @@ final class UsageService: ObservableObject {
         usageByConfigFolderPath[configFolderPath] = usage
     }
 
+    private struct FetchedUsage {
+        let windows: [String: UsageWindow]
+        let extraUsage: ExtraUsage?
+        let planName: String
+    }
+
+    private func fetchUsage(account: Account) async throws -> FetchedUsage {
+        let configFolderPath = account.configFolderPath
+        switch account.codingTool {
+        case .claudeCode:
+            let keychainServiceName = account.keychainServiceName
+            let (token, plan) = try await Task.detached(priority: .userInitiated) {
+                try Self.readClaudeLoginToken(keychainServiceName: keychainServiceName)
+            }.value
+            usageByConfigFolderPath[configFolderPath, default: AccountUsage()].loginStatus = .found
+            let response = try await fetchClaudeUsage(token: token)
+            return FetchedUsage(windows: response.windows, extraUsage: response.extraUsage, planName: plan)
+        case .codex:
+            let loginToken = try await Task.detached(priority: .userInitiated) {
+                try CodexAuthFile.readLoginToken(configFolderPath: configFolderPath, now: Date())
+            }.value
+            usageByConfigFolderPath[configFolderPath, default: AccountUsage()].loginStatus = .found
+            let response = try await fetchCodexUsage(loginToken: loginToken)
+            return FetchedUsage(windows: response.windows, extraUsage: nil, planName: response.planName)
+        }
+    }
+
     private var isEveryShownAccountLoaded: Bool {
         accountStore.shownAccounts.allSatisfy { usage(for: $0).hasUsageData }
     }
 
-    private nonisolated static func findConfigFoldersWithKeychainLogin(homeFolderPath: String) -> [String] {
+    private nonisolated static func findClaudeConfigFoldersWithKeychainLogin(homeFolderPath: String) -> [String] {
+        findConfigFolders(homeFolderPath: homeFolderPath, isConfigFolderName: Account.isClaudeConfigFolderName) { configFolderPath in
+            hasKeychainEntry(keychainServiceName: Account.keychainServiceName(
+                configFolderPath: configFolderPath,
+                homeFolderPath: homeFolderPath
+            ))
+        }
+    }
+
+    private nonisolated static func findCodexConfigFoldersWithAuthFile(homeFolderPath: String) -> [String] {
+        findConfigFolders(homeFolderPath: homeFolderPath, isConfigFolderName: Account.isCodexConfigFolderName) { configFolderPath in
+            CodexAuthFile.exists(configFolderPath: configFolderPath)
+        }
+    }
+
+    private nonisolated static func findConfigFolders(
+        homeFolderPath: String,
+        isConfigFolderName: (String) -> Bool,
+        hasLogin: (String) -> Bool
+    ) -> [String] {
         let folderNames = (try? FileManager.default.contentsOfDirectory(atPath: homeFolderPath)) ?? []
         return folderNames
-            .filter(ClaudeAccount.isConfigFolderName)
+            .filter(isConfigFolderName)
             .map { (homeFolderPath as NSString).appendingPathComponent($0) }
             .filter(isExistingFolder)
-            .filter { configFolderPath in
-                hasKeychainEntry(keychainServiceName: ClaudeAccount.keychainServiceName(
-                    configFolderPath: configFolderPath,
-                    homeFolderPath: homeFolderPath
-                ))
-            }
+            .filter(hasLogin)
             .sorted()
     }
 
@@ -140,20 +187,23 @@ final class UsageService: ObservableObject {
         return process.terminationStatus == 0
     }
 
-    // MARK: - Keychain
-
-    private nonisolated static func readKeychainLoginStatus(keychainServiceName: String) -> KeychainLoginStatus {
+    private nonisolated static func readLoginStatus(account: Account) -> LoginStatus {
         do {
-            _ = try fetchOAuthToken(keychainServiceName: keychainServiceName)
+            switch account.codingTool {
+            case .claudeCode:
+                _ = try readClaudeLoginToken(keychainServiceName: account.keychainServiceName)
+            case .codex:
+                _ = try CodexAuthFile.readLoginToken(configFolderPath: account.configFolderPath, now: Date())
+            }
             return .found
         } catch let error as UsageError {
-            return error.keychainLoginStatus ?? .unreadable
+            return error.loginStatus ?? .unreadable
         } catch {
             return .unreadable
         }
     }
 
-    private nonisolated static func fetchOAuthToken(keychainServiceName: String) throws -> (String, String) {
+    private nonisolated static func readClaudeLoginToken(keychainServiceName: String) throws -> (String, String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         process.arguments = ["find-generic-password", "-s", keychainServiceName, "-w"]
@@ -166,43 +216,57 @@ final class UsageService: ObservableObject {
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
-            throw UsageError.keychainNotFound
+            throw UsageError.loginNotFound(.claudeCode)
         }
 
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         guard let raw = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !raw.isEmpty else {
-            throw UsageError.keychainNotFound
+            throw UsageError.loginNotFound(.claudeCode)
         }
 
         guard let jsonData = raw.data(using: .utf8) else {
-            throw UsageError.invalidToken
+            throw UsageError.invalidToken(.claudeCode)
         }
 
         if let creds = try? JSONDecoder().decode(OAuthCredentials.self, from: jsonData),
            let oauth = creds.claudeAiOauth {
             // Check expiry
             if let exp = oauth.expiresAt, exp < Date().timeIntervalSince1970 * 1000 {
-                throw UsageError.tokenExpired
+                throw UsageError.tokenExpired(.claudeCode)
             }
             let plan = oauth.subscriptionType?.capitalized ?? "Pro"
             return (oauth.accessToken, plan)
         }
 
-        throw UsageError.invalidToken
+        throw UsageError.invalidToken(.claudeCode)
     }
 
     // MARK: - API
 
-    private nonisolated func fetchUsage(token: String) async throws -> UsageResponse {
-        var request = URLRequest(url: apiURL)
+    private nonisolated func fetchClaudeUsage(token: String) async throws -> UsageResponse {
+        var request = URLRequest(url: claudeUsageURL)
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("claude-code/2.x", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 15
+        return try UsageResponse.decode(from: try await Self.fetchSuccessBody(request: request))
+    }
 
+    private nonisolated func fetchCodexUsage(loginToken: CodexLoginToken) async throws -> CodexUsageResponse {
+        var request = URLRequest(url: codexUsageURL)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(loginToken.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue(loginToken.chatGPTAccountID, forHTTPHeaderField: "chatgpt-account-id")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("codex-cli", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 15
+        return try CodexUsageResponse.decode(from: try await Self.fetchSuccessBody(request: request))
+    }
+
+    private nonisolated static func fetchSuccessBody(request: URLRequest) async throws -> Data {
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let http = response as? HTTPURLResponse else {
@@ -214,7 +278,7 @@ final class UsageService: ObservableObject {
             throw UsageError.networkError("HTTP \(http.statusCode): \(body)")
         }
 
-        return try UsageResponse.decode(from: data)
+        return data
     }
 
     // MARK: - Token History (JSONL)
@@ -444,40 +508,5 @@ final class UsageService: ObservableObject {
 
     deinit {
         refreshTimer?.invalidate()
-    }
-}
-
-// MARK: - Errors
-
-enum UsageError: LocalizedError {
-    case keychainNotFound
-    case tokenExpired
-    case invalidToken
-    case networkError(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .keychainNotFound:
-            return "Claude Code credentials not found in Keychain. Make sure you're logged in to Claude Code."
-        case .tokenExpired:
-            return "Claude Code login token expired. Use Claude Code with this account once to refresh it."
-        case .invalidToken:
-            return "Could not parse OAuth token from Keychain."
-        case .networkError(let msg):
-            return "Network error: \(msg)"
-        }
-    }
-
-    var keychainLoginStatus: KeychainLoginStatus? {
-        switch self {
-        case .keychainNotFound:
-            return .notFound
-        case .tokenExpired:
-            return .tokenExpired
-        case .invalidToken:
-            return .unreadable
-        case .networkError:
-            return nil
-        }
     }
 }

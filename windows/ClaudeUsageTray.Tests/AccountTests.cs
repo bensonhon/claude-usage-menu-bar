@@ -2,7 +2,7 @@ using ClaudeUsageTray.Core;
 
 namespace ClaudeUsageTray.Tests;
 
-public class ClaudeAccountTests
+public class AccountTests
 {
     private static readonly string Home = Path.Combine(Path.GetTempPath(), "home");
     private static readonly char Separator = Path.DirectorySeparatorChar;
@@ -13,7 +13,7 @@ public class ClaudeAccountTests
     [InlineData("%USERPROFILE%")]
     public void TildeAndUserProfileMeanTheHomeFolder(string typedPath)
     {
-        Assert.Equal(Home, ClaudeAccount.NormalizedConfigFolderPath(typedPath, Home));
+        Assert.Equal(Home, Account.NormalizedConfigFolderPath(typedPath, Home));
     }
 
     [Theory]
@@ -23,37 +23,37 @@ public class ClaudeAccountTests
     [InlineData("%userprofile%/.claude-work\\")]
     public void HomeShortcutsExpandIntoTheHomeFolder(string typedPath)
     {
-        Assert.Equal(Path.Combine(Home, ".claude-work"), ClaudeAccount.NormalizedConfigFolderPath(typedPath, Home));
+        Assert.Equal(Path.Combine(Home, ".claude-work"), Account.NormalizedConfigFolderPath(typedPath, Home));
     }
 
     [Fact]
     public void TrailingSeparatorsAreRemovedButADriveRootIsKept()
     {
-        Assert.Equal("D:\\claude-team", ClaudeAccount.NormalizedConfigFolderPath("D:\\claude-team\\\\", Home));
-        Assert.Equal("D:\\", ClaudeAccount.NormalizedConfigFolderPath("D:\\", Home));
+        Assert.Equal("D:\\claude-team", Account.NormalizedConfigFolderPath("D:\\claude-team\\\\", Home));
+        Assert.Equal("D:\\", Account.NormalizedConfigFolderPath("D:\\", Home));
     }
 
     [Fact]
     public void DefaultLabelDropsTheLeadingDot()
     {
-        Assert.Equal("claude-work", ClaudeAccount.DefaultLabel("C:\\Users\\benson\\.claude-work"));
-        Assert.Equal("team", ClaudeAccount.DefaultLabel("D:/team/"));
+        Assert.Equal("claude-work", Account.DefaultLabel("C:\\Users\\benson\\.claude-work"));
+        Assert.Equal("team", Account.DefaultLabel("D:/team/"));
     }
 
     [Fact]
     public void DisplayPathShortensTheHomeFolderToTilde()
     {
-        Assert.Equal("~", ClaudeAccount.DisplayPath(Home, Home));
-        Assert.Equal($"~{Separator}.claude-work", ClaudeAccount.DisplayPath(Path.Combine(Home, ".claude-work"), Home));
-        Assert.Equal(Home + "2", ClaudeAccount.DisplayPath(Home + "2", Home));
-        Assert.Equal("D:\\team", ClaudeAccount.DisplayPath("D:\\team", Home));
+        Assert.Equal("~", Account.DisplayPath(Home, Home));
+        Assert.Equal($"~{Separator}.claude-work", Account.DisplayPath(Path.Combine(Home, ".claude-work"), Home));
+        Assert.Equal(Home + "2", Account.DisplayPath(Home + "2", Home));
+        Assert.Equal("D:\\team", Account.DisplayPath("D:\\team", Home));
     }
 
     [Fact]
     public void LabelOrFolderNameFallsBackToTheFolderName()
     {
-        Assert.Equal("claude-work", new ClaudeAccount("C:\\Users\\b\\.claude-work", "   ", true, false).LabelOrFolderName);
-        Assert.Equal("work", new ClaudeAccount("C:\\Users\\b\\.claude-work", " work ", true, false).LabelOrFolderName);
+        Assert.Equal("claude-work", new Account("C:\\Users\\b\\.claude-work", "   ", true, false).LabelOrFolderName);
+        Assert.Equal("work", new Account("C:\\Users\\b\\.claude-work", " work ", true, false).LabelOrFolderName);
     }
 
     [Theory]
@@ -62,9 +62,21 @@ public class ClaudeAccountTests
     [InlineData(".CLAUDE-old", true)]
     [InlineData("claude", false)]
     [InlineData(".config", false)]
-    public void ConfigFolderNamesStartWithDotClaude(string folderName, bool expected)
+    [InlineData(".codex", false)]
+    public void ClaudeConfigFolderNamesStartWithDotClaude(string folderName, bool expected)
     {
-        Assert.Equal(expected, ClaudeAccount.IsConfigFolderName(folderName));
+        Assert.Equal(expected, Account.IsClaudeConfigFolderName(folderName));
+    }
+
+    [Theory]
+    [InlineData(".codex", true)]
+    [InlineData(".codex-work", true)]
+    [InlineData(".CODEX", true)]
+    [InlineData("codex", false)]
+    [InlineData(".claude", false)]
+    public void CodexConfigFolderNamesStartWithDotCodex(string folderName, bool expected)
+    {
+        Assert.Equal(expected, Account.IsCodexConfigFolderName(folderName));
     }
 }
 
@@ -78,13 +90,13 @@ public class AccountStoreTests
         var store = new AccountStore(accountsFilePath, folder.Path);
         var defaultPath = Path.Combine(folder.Path, ".claude");
 
-        Assert.Equal([new ClaudeAccount(defaultPath, "claude", true, false)], store.Accounts);
+        Assert.Equal([new Account(defaultPath, "claude", true, false)], store.Accounts);
 
         store.SetLabel("main", defaultPath);
         store.SetShownInTray(false, defaultPath);
 
         var reloaded = new AccountStore(accountsFilePath, folder.Path);
-        Assert.Equal([new ClaudeAccount(defaultPath, "main", false, false)], reloaded.Accounts);
+        Assert.Equal([new Account(defaultPath, "main", false, false)], reloaded.Accounts);
         Assert.Empty(reloaded.ShownAccounts);
     }
 
@@ -106,11 +118,11 @@ public class AccountStoreTests
         var changeCount = 0;
         store.AccountsChanged += () => changeCount++;
 
-        store.AddFoundConfigFolders([Path.Combine(folder.Path, ".claude"), workPath]);
-        store.AddFoundConfigFolders([workPath.ToUpperInvariant()]);
+        store.AddFoundConfigFolders([Path.Combine(folder.Path, ".claude"), workPath], CodingTool.ClaudeCode);
+        store.AddFoundConfigFolders([workPath.ToUpperInvariant()], CodingTool.ClaudeCode);
 
         Assert.Equal(2, store.Accounts.Count);
-        Assert.Equal(new ClaudeAccount(workPath, "claude-work", true, true), store.Accounts[1]);
+        Assert.Equal(new Account(workPath, "claude-work", true, true), store.Accounts[1]);
         Assert.Equal(1, changeCount);
         Assert.False(store.IsRemovable(store.Accounts[0]));
         Assert.False(store.IsRemovable(store.Accounts[1]));
@@ -133,7 +145,7 @@ public class AccountStoreTests
         store.AddConfigFolder(teamPath + Path.DirectorySeparatorChar, "  ", Directory.Exists);
 
         var added = store.Accounts[^1];
-        Assert.Equal(new ClaudeAccount(teamPath, "team", true, false), added);
+        Assert.Equal(new Account(teamPath, "team", true, false), added);
         Assert.True(store.IsRemovable(added));
         store.Remove(teamPath);
         Assert.Single(store.Accounts);
@@ -146,7 +158,7 @@ public class AccountStoreTests
         var store = new AccountStore(Path.Combine(folder.Path, "accounts.json"), folder.Path);
         var defaultPath = Path.Combine(folder.Path, ".claude");
         var workPath = Path.Combine(folder.Path, ".claude-work");
-        store.AddFoundConfigFolders([workPath]);
+        store.AddFoundConfigFolders([workPath], CodingTool.ClaudeCode);
 
         store.MoveUp(defaultPath);
         Assert.Equal([defaultPath, workPath], store.Accounts.Select(a => a.ConfigFolderPath));
@@ -166,7 +178,7 @@ public class AccountStoreTests
         var store = new AccountStore(Path.Combine(folder.Path, "accounts.json"), folder.Path);
         var defaultPath = Path.Combine(folder.Path, ".claude");
         var workPath = Path.Combine(folder.Path, ".claude-work");
-        store.AddFoundConfigFolders([workPath]);
+        store.AddFoundConfigFolders([workPath], CodingTool.ClaudeCode);
 
         Assert.Equal(defaultPath, store.SelectedAccount(null)!.ConfigFolderPath);
         Assert.Equal(workPath, store.SelectedAccount(workPath.ToUpperInvariant())!.ConfigFolderPath);
@@ -182,7 +194,7 @@ public class AccountStoreTests
         using var folder = new TemporaryFolder();
         var store = new AccountStore(Path.Combine(folder.Path, "accounts.json"), folder.Path);
         var workPath = Path.Combine(folder.Path, ".claude-work");
-        store.AddFoundConfigFolders([workPath]);
+        store.AddFoundConfigFolders([workPath], CodingTool.ClaudeCode);
 
         store.Remove(workPath);
         store.Remove(Path.Combine(folder.Path, ".claude"));
@@ -199,7 +211,6 @@ public class AppSettingsTests
         using var folder = new TemporaryFolder();
         var settings = new AppSettings(Path.Combine(folder.Path, "settings.json"));
 
-        Assert.True(settings.ShowLogo);
         Assert.True(settings.ShowResetTime);
         Assert.True(settings.DarkMode);
         Assert.False(settings.MultiAccountSimpleMode);
@@ -217,17 +228,28 @@ public class AppSettingsTests
 
         settings.DarkMode = false;
         settings.DarkMode = false;
-        settings.ShowLogo = false;
+        settings.ShowResetTime = false;
         settings.SelectedConfigFolderPath = "C:\\x";
         settings.MultiAccountSimpleMode = true;
 
         var reloaded = new AppSettings(settingsFilePath);
         Assert.False(reloaded.DarkMode);
-        Assert.False(reloaded.ShowLogo);
-        Assert.True(reloaded.ShowResetTime);
+        Assert.False(reloaded.ShowResetTime);
         Assert.Equal("C:\\x", reloaded.SelectedConfigFolderPath);
         Assert.True(reloaded.MultiAccountSimpleMode);
         Assert.Equal(4, changeCount);
+    }
+
+    [Fact]
+    public void SettingsSavedWithTheRemovedShowLogoStillLoad()
+    {
+        using var folder = new TemporaryFolder();
+        var settingsFilePath = folder.WriteFile("""{"ShowLogo":false,"ShowResetTime":false,"DarkMode":false}""", "settings.json");
+
+        var settings = new AppSettings(settingsFilePath);
+
+        Assert.False(settings.ShowResetTime);
+        Assert.False(settings.DarkMode);
     }
 
     [Theory]

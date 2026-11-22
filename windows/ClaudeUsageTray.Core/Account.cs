@@ -1,8 +1,28 @@
+using System.Text.Json.Serialization;
+
 namespace ClaudeUsageTray.Core;
 
-public sealed record ClaudeAccount(string ConfigFolderPath, string Label, bool IsShownInTray, bool IsFoundAutomatically)
+[JsonConverter(typeof(JsonStringEnumConverter<CodingTool>))]
+public enum CodingTool
 {
-    public const string ConfigFolderNamePrefix = ".claude";
+    ClaudeCode,
+    Codex,
+}
+
+public static class CodingToolExtensions
+{
+    public static string Name(this CodingTool codingTool) => codingTool switch
+    {
+        CodingTool.ClaudeCode => "Claude Code",
+        CodingTool.Codex => "Codex",
+        _ => throw new ArgumentOutOfRangeException(nameof(codingTool), codingTool, null),
+    };
+}
+
+public sealed record Account(string ConfigFolderPath, string Label, bool IsShownInTray, bool IsFoundAutomatically, CodingTool CodingTool = CodingTool.ClaudeCode)
+{
+    public const string ClaudeConfigFolderNamePrefix = ".claude";
+    public const string CodexConfigFolderNamePrefix = ".codex";
 
     private static readonly char[] PathSeparators = ['\\', '/'];
 
@@ -20,9 +40,11 @@ public sealed record ClaudeAccount(string ConfigFolderPath, string Label, bool I
     public static bool IsSamePath(string firstPath, string secondPath) =>
         string.Equals(firstPath, secondPath, StringComparison.OrdinalIgnoreCase);
 
-    public static string DefaultConfigFolderPath(string homeFolderPath) => Path.Combine(homeFolderPath, ConfigFolderNamePrefix);
+    public static string DefaultConfigFolderPath(string homeFolderPath) => Path.Combine(homeFolderPath, ClaudeConfigFolderNamePrefix);
 
-    public static bool IsConfigFolderName(string folderName) => folderName.StartsWith(ConfigFolderNamePrefix, StringComparison.OrdinalIgnoreCase);
+    public static bool IsClaudeConfigFolderName(string folderName) => folderName.StartsWith(ClaudeConfigFolderNamePrefix, StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsCodexConfigFolderName(string folderName) => folderName.StartsWith(CodexConfigFolderNamePrefix, StringComparison.OrdinalIgnoreCase);
 
     public static string NormalizedConfigFolderPath(string typedPath, string homeFolderPath)
     {
