@@ -37,15 +37,7 @@ CODEX_USAGE_BY_CHATGPT_ACCOUNT_ID = {
 }
 
 
-class FakeUsageApiServer(http.server.ThreadingHTTPServer):
-    request_queue_size = 64
-
-
 class FakeUsageApiHandler(http.server.BaseHTTPRequestHandler):
-    def setup(self):
-        self.request.do_handshake()
-        super().setup()
-
     def do_GET(self):
         if self.path == "/api/oauth/usage":
             token = self.headers.get("Authorization", "").removeprefix("Bearer ")
@@ -68,10 +60,10 @@ class FakeUsageApiHandler(http.server.BaseHTTPRequestHandler):
 
 def main():
     certificate_path, key_path = sys.argv[1], sys.argv[2]
-    server = FakeUsageApiServer(("127.0.0.1", 443), FakeUsageApiHandler)
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 443), FakeUsageApiHandler)
     tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     tls_context.load_cert_chain(certificate_path, key_path)
-    server.socket = tls_context.wrap_socket(server.socket, server_side=True, do_handshake_on_connect=False)
+    server.socket = tls_context.wrap_socket(server.socket, server_side=True)
     server.serve_forever()
 
 
