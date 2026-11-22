@@ -21,6 +21,7 @@ struct AccountTab: Identifiable {
     let configFolderPath: String
     let label: String
     let color: Color
+    let codingTool: CodingTool
     let sessionRemaining: Double?
     let weeklyRemaining: Double?
 
@@ -120,6 +121,7 @@ struct AccountTabsView: View {
                 Circle()
                     .fill(tab.color)
                     .frame(width: 7, height: 7)
+                CodingToolLogoView(codingTool: tab.codingTool, size: 12, chatGPTLogoColor: isSelected ? textPrimary : textMuted)
                 Text(tab.label)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(isSelected ? textPrimary : textMuted)

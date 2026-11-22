@@ -11,7 +11,7 @@ func check(_ isPassing: Bool, _ checkName: String) {
 }
 
 func makeTab(label: String, sessionRemaining: Double?, weeklyRemaining: Double?) -> AccountTab {
-    AccountTab(configFolderPath: "/Users/benson.hon/.\(label)", label: label, color: .blue,
+    AccountTab(configFolderPath: "/Users/benson.hon/.\(label)", label: label, color: .blue, codingTool: .claudeCode,
                sessionRemaining: sessionRemaining, weeklyRemaining: weeklyRemaining)
 }
 
@@ -48,6 +48,11 @@ Task { @MainActor in
           "two short names show session / weekly on one line, three accounts stack weekly below session")
     check(twoWithLongNameHeight == threeShortNamesHeight,
           "two accounts stack weekly below session when a name does not fit beside session / weekly")
+
+    check(CodingToolLogo.logo(for: .claudeCode).map { !$0.isTemplate } == true,
+          "a Claude Code account shows the Claude logo in its own colors")
+    check(CodingToolLogo.logo(for: .codex).map { $0.isTemplate && $0.isValid } == true,
+          "a Codex account shows the ChatGPT logo tinted to the text color")
 
     print(failedCheckNames.isEmpty ? "ALL PASSED" : "FAILED: \(failedCheckNames.count)")
     exit(failedCheckNames.isEmpty ? 0 : 1)

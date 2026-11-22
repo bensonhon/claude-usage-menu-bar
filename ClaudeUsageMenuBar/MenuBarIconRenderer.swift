@@ -2,6 +2,7 @@ import AppKit
 
 struct MenuBarAccountRing {
     let remaining: Double?
+    let resetDay: String?
     let resetTime: String?
     let accountColor: NSColor?
 }
@@ -29,31 +30,42 @@ enum MenuBarIconRenderer {
         return raw.uppercased()
     }
 
-    private static let timeAttrs: [NSAttributedString.Key: Any] = [
+    private static let oneLineTimeAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
         .foregroundColor: NSColor.white,
     ]
 
-    private static func timeText(of ring: MenuBarAccountRing) -> String {
-        guard let resetTime = ring.resetTime, resetTime != "—" else { return "" }
-        return resetTime
+    private static let twoLineTimeAttrs: [NSAttributedString.Key: Any] = [
+        .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .medium),
+        .foregroundColor: NSColor.white,
+    ]
+
+    static func timeLines(of ring: MenuBarAccountRing) -> [String] {
+        guard let resetTime = ring.resetTime, resetTime != "—" else { return [] }
+        guard let resetDay = ring.resetDay else { return [resetTime] }
+        return [resetDay, resetTime]
+    }
+
+    private static func timeAttrs(lineCount: Int) -> [NSAttributedString.Key: Any] {
+        lineCount > 1 ? twoLineTimeAttrs : oneLineTimeAttrs
+    }
+
+    private static func timeLinesWidth(_ lines: [String]) -> CGFloat {
+        let attrs = timeAttrs(lineCount: lines.count)
+        return lines.map { ($0 as NSString).size(withAttributes: attrs).width }.max() ?? 0
     }
 
     private static func accountWidth(of ring: MenuBarAccountRing) -> CGFloat {
-        let text = timeText(of: ring)
-        guard !text.isEmpty else { return ringSize }
-        return ringSize + gapInsideAccount + (text as NSString).size(withAttributes: timeAttrs).width
+        let lines = timeLines(of: ring)
+        guard !lines.isEmpty else { return ringSize }
+        return ringSize + gapInsideAccount + timeLinesWidth(lines)
     }
 
-    private static func logoSectionWidth(accountRings: [MenuBarAccountRing], showLogo: Bool) -> CGFloat {
-        guard showLogo || accountRings.isEmpty else { return 0 }
-        return logoSize + (accountRings.isEmpty ? 0 : gapInsideAccount)
-    }
 
     /// Index of the account whose ring (or reset time) sits at `x`, measured from
     /// the left edge of the image `renderFull` draws. Nil over the logo or a gap.
-    static func accountIndex(atX x: CGFloat, accountRings: [MenuBarAccountRing], showLogo: Bool = true) -> Int? {
-        var accountStartX = logoSectionWidth(accountRings: accountRings, showLogo: showLogo)
+    static func accountIndex(atX x: CGFloat, accountRings: [MenuBarAccountRing]) -> Int? {
+        var accountStartX: CGFloat = 0
         for (index, ring) in accountRings.enumerated() {
             let accountEndX = accountStartX + accountWidth(of: ring)
             if x >= accountStartX && x < accountEndX {
@@ -64,13 +76,12 @@ enum MenuBarIconRenderer {
         return nil
     }
 
-    static func renderFull(accountRings: [MenuBarAccountRing], showLogo: Bool = true) -> NSImage {
-        let isLogoDrawn = showLogo || accountRings.isEmpty
+    static func renderFull(accountRings: [MenuBarAccountRing]) -> NSImage {
+        let isLogoDrawn = accountRings.isEmpty
         let height: CGFloat = 22
 
-        let timeTexts = accountRings.map(timeText(of:))
-        let timeSizes = timeTexts.map { ($0 as NSString).size(withAttributes: timeAttrs) }
-        let logoWidth = logoSectionWidth(accountRings: accountRings, showLogo: showLogo)
+        let timeLinesByAccount = accountRings.map(timeLines(of:))
+        let logoWidth: CGFloat = isLogoDrawn ? logoSize : 0
         let totalWidth = logoWidth
             + accountRings.map(accountWidth(of:)).reduce(0, +)
             + gapBetweenAccounts * CGFloat(max(accountRings.count - 1, 0))
@@ -97,12 +108,17 @@ enum MenuBarIconRenderer {
                              from: .zero, operation: .sourceOver, fraction: 1.0)
                 xOffset += ringSize
 
-                let timeText = timeTexts[index]
-                if !timeText.isEmpty {
+                let lines = timeLinesByAccount[index]
+                if !lines.isEmpty {
                     xOffset += gapInsideAccount
-                    let textY = (height - timeSizes[index].height) / 2
-                    (timeText as NSString).draw(at: CGPoint(x: xOffset, y: textY), withAttributes: timeAttrs)
-                    xOffset += timeSizes[index].width
+                    let attrs = timeAttrs(lineCount: lines.count)
+                    let lineHeights = lines.map { ($0 as NSString).size(withAttributes: attrs).height }
+                    var lineTopY = (height + lineHeights.reduce(0, +)) / 2
+                    for (line, lineHeight) in zip(lines, lineHeights) {
+                        lineTopY -= lineHeight
+                        (line as NSString).draw(at: CGPoint(x: xOffset, y: lineTopY), withAttributes: attrs)
+                    }
+                    xOffset += timeLinesWidth(lines)
                 }
             }
             return true

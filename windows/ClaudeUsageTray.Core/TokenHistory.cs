@@ -143,7 +143,7 @@ public static class TokenHistoryParser
             {
                 continue;
             }
-            var projectName = session.Cwd is null ? "(unknown)" : ClaudeAccount.LastPathComponent(session.Cwd);
+            var projectName = session.Cwd is null ? "(unknown)" : Account.LastPathComponent(session.Cwd);
             var summary = new SessionSummary(sessionId, projectName, session.Model, session.LastActivity);
             if (!latestSessionByProject.TryGetValue(projectName, out var existing) || summary.LastActivity > existing.LastActivity)
             {

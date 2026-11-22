@@ -32,10 +32,9 @@ extension UsageResponse {
             if skipKeys.contains(key) { continue }
             guard let dict = value as? [String: Any] else { continue }
             guard let utilization = dict["utilization"] as? Double else { continue }
-            let resetsAt = dict["resets_at"] as? String
             response.windows[key] = UsageWindow(
                 utilization: utilization,
-                resetsAt: resetsAt
+                resetDate: (dict["resets_at"] as? String).flatMap(UsageWindow.resetDate(isoText:))
             )
         }
 
@@ -45,19 +44,18 @@ extension UsageResponse {
 
 struct UsageWindow {
     let utilization: Double
-    let resetsAt: String?
+    let resetDate: Date?
 
     var remaining: Double {
         max(0, min(100, 100 - utilization))
     }
 
-    var resetDate: Date? {
-        guard let resetsAt else { return nil }
+    static func resetDate(isoText: String) -> Date? {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: resetsAt) { return date }
+        if let date = formatter.date(from: isoText) { return date }
         formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: resetsAt)
+        return formatter.date(from: isoText)
     }
 
     /// Round to nearest hour (e.g. 2:59PM → 3PM)
@@ -85,6 +83,13 @@ struct UsageWindow {
     var resetClockShort: String {
         guard let date = resetDateRounded else { return "—" }
         return formatHour(date)
+    }
+
+    var resetWeekdayShort: String? {
+        guard let date = resetDateRounded else { return nil }
+        let fmt = DateFormatter()
+        fmt.dateFormat = "EEE"
+        return fmt.string(from: date)
     }
 
     /// Full date + time — for popover detail view
@@ -210,7 +215,7 @@ enum UsageLoadState {
     case error(String)
 }
 
-enum KeychainLoginStatus: Equatable {
+enum LoginStatus: Equatable {
     case notChecked
     case found
     case tokenExpired
@@ -229,7 +234,7 @@ enum KeychainLoginStatus: Equatable {
 
 struct AccountUsage {
     var loadState: UsageLoadState = .idle
-    var keychainLoginStatus: KeychainLoginStatus = .notChecked
+    var loginStatus: LoginStatus = .notChecked
     var windows: [String: UsageWindow] = [:]
     var extraUsage: ExtraUsage? = nil
     var tokenActivity: TokenActivity = TokenActivity()
@@ -243,6 +248,33 @@ struct AccountUsage {
 
     var weeklyWindow: UsageWindow? {
         windows["seven_day"]
+    }
+
+    var menuBarRingWindow: UsageWindow? {
+        if let sessionWindow {
+            return sessionWindow
+        }
+        return weeklyWindow
+    }
+
+    static let minimumTimeBetweenFetches: TimeInterval = 60
+
+    func isNetworkFetchSkipped(force: Bool, now: Date) -> Bool {
+        if case .loading = loadState {
+            return true
+        }
+        if force {
+            return false
+        }
+        guard let lastUpdated else {
+            return false
+        }
+        return now.timeIntervalSince(lastUpdated) < AccountUsage.minimumTimeBetweenFetches
+    }
+
+    var menuBarRingResetDay: String? {
+        guard sessionWindow == nil else { return nil }
+        return weeklyWindow?.resetWeekdayShort
     }
 
     var secondaryWindows: [WindowDisplayInfo] {
@@ -289,6 +321,43 @@ struct WindowDisplayInfo: Identifiable {
         case "seven_day_oauth_apps": return "OAuth Apps (7d)"
         default:
             return key.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+}
+
+enum UsageError: LocalizedError {
+    case loginNotFound(CodingTool)
+    case tokenExpired(CodingTool)
+    case invalidToken(CodingTool)
+    case networkError(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .loginNotFound(.claudeCode):
+            return "Claude Code credentials not found in Keychain. Make sure you're logged in to Claude Code."
+        case .loginNotFound(.codex):
+            return "No ChatGPT login found in Codex's auth.json. Sign in to Codex with ChatGPT."
+        case .tokenExpired(let codingTool):
+            return "\(codingTool.name) login token expired. Use \(codingTool.name) with this account once to refresh it."
+        case .invalidToken(.claudeCode):
+            return "Could not parse OAuth token from Keychain."
+        case .invalidToken(.codex):
+            return "Could not read the ChatGPT login token from Codex's auth.json."
+        case .networkError(let msg):
+            return "Network error: \(msg)"
+        }
+    }
+
+    var loginStatus: LoginStatus? {
+        switch self {
+        case .loginNotFound:
+            return .notFound
+        case .tokenExpired:
+            return .tokenExpired
+        case .invalidToken:
+            return .unreadable
+        case .networkError:
+            return nil
         }
     }
 }

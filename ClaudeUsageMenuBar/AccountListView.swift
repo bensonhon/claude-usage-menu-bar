@@ -81,7 +81,7 @@ struct AccountListView: View {
         .buttonStyle(.plain)
     }
 
-    private func accountRow(_ account: ClaudeAccount) -> some View {
+    private func accountRow(_ account: Account) -> some View {
         HStack(spacing: 8) {
             Toggle("", isOn: Binding(
                 get: { account.isShownInMenuBar },
@@ -100,7 +100,7 @@ struct AccountListView: View {
             Spacer(minLength: 4)
 
             VStack(alignment: .trailing, spacing: 3) {
-                keychainLoginStatusChip(service.usage(for: account).keychainLoginStatus)
+                loginStatusChip(service.usage(for: account).loginStatus)
                 if account.isFoundAutomatically {
                     chip("Found automatically", color: Color(hex: "60A5FA"))
                 }
@@ -110,7 +110,7 @@ struct AccountListView: View {
         .background(RoundedRectangle(cornerRadius: 9).fill(rowBackground))
     }
 
-    private func editingRow(_ account: ClaudeAccount) -> some View {
+    private func editingRow(_ account: Account) -> some View {
         let position = accountStore.position(of: account)
         return HStack(spacing: 8) {
             VStack(spacing: 2) {
@@ -123,7 +123,7 @@ struct AccountListView: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                TextField(ClaudeAccount.defaultLabel(configFolderPath: account.configFolderPath), text: Binding(
+                TextField(Account.defaultLabel(configFolderPath: account.configFolderPath), text: Binding(
                     get: { account.label },
                     set: { accountStore.setLabel($0, configFolderPath: account.configFolderPath) }
                 ))
@@ -179,12 +179,12 @@ struct AccountListView: View {
     }
 
     private var keychainServiceNamePreview: String {
-        let homeFolderPath = ClaudeAccount.currentHomeFolderPath
-        let configFolderPath = ClaudeAccount.normalizedConfigFolderPath(typedPath: typedPath, homeFolderPath: homeFolderPath)
+        let homeFolderPath = Account.currentHomeFolderPath
+        let configFolderPath = Account.normalizedConfigFolderPath(typedPath: typedPath, homeFolderPath: homeFolderPath)
         guard configFolderPath.hasPrefix("/") else {
             return "Type the folder you set as CLAUDE_CONFIG_DIR"
         }
-        let keychainServiceName = ClaudeAccount.keychainServiceName(configFolderPath: configFolderPath, homeFolderPath: homeFolderPath)
+        let keychainServiceName = Account.keychainServiceName(configFolderPath: configFolderPath, homeFolderPath: homeFolderPath)
         return "Keychain entry: \(keychainServiceName)"
     }
 
@@ -207,7 +207,7 @@ struct AccountListView: View {
         }
     }
 
-    private func accountNameAndPath(_ account: ClaudeAccount) -> some View {
+    private func accountNameAndPath(_ account: Account) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(account.labelOrFolderName)
                 .font(.system(size: 12, weight: .semibold))
@@ -222,8 +222,8 @@ struct AccountListView: View {
     }
 
     @ViewBuilder
-    private func keychainLoginStatusChip(_ keychainLoginStatus: KeychainLoginStatus) -> some View {
-        switch keychainLoginStatus {
+    private func loginStatusChip(_ loginStatus: LoginStatus) -> some View {
+        switch loginStatus {
         case .notChecked:
             chip("Checking…", color: textMuted)
         case .found:

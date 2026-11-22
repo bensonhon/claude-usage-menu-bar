@@ -20,7 +20,7 @@ public class UsageResponseTests
 
         Assert.Equal(["five_hour", "seven_day"], response.Windows.Keys.Order());
         Assert.Equal(38.5, response.Windows["five_hour"].Utilization);
-        Assert.Null(response.Windows["seven_day"].ResetsAt);
+        Assert.Null(response.Windows["seven_day"].ResetDate);
         Assert.Equal(new ExtraUsage(true, 1240, 5000), response.ExtraUsage);
     }
 

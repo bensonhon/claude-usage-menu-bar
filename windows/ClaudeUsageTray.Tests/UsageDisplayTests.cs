@@ -60,8 +60,20 @@ public class UsageDisplayTests
     [Fact]
     public void FriendlyErrorMessageForLoginErrors()
     {
-        Assert.Equal("Requires Claude Code CLI. Sign in via claude to load usage data.", UsageText.FriendlyErrorMessage("Network error: HTTP 401: nope"));
-        Assert.Equal("Network error: HTTP 500: oops", UsageText.FriendlyErrorMessage("Network error: HTTP 500: oops"));
+        Assert.Equal("Requires Claude Code CLI. Sign in via claude to load usage data.", UsageText.FriendlyErrorMessage("Network error: HTTP 401: nope", CodingTool.ClaudeCode));
+        Assert.Equal("Requires Codex CLI. Sign in via codex to load usage data.", UsageText.FriendlyErrorMessage("Network error: HTTP 401: nope", CodingTool.Codex));
+        Assert.Equal("Network error: HTTP 500: oops", UsageText.FriendlyErrorMessage("Network error: HTTP 500: oops", CodingTool.ClaudeCode));
+    }
+
+    [Fact]
+    public void LoginProblemTextNamesTheCodingTool()
+    {
+        Assert.Equal("Login token expired. Use Codex with this account once, and it comes back on the next refresh.",
+            UsageText.LoginProblemText(LoginStatus.TokenExpired, CodingTool.Codex));
+        Assert.Equal("No Claude Code login found for this folder. Sign in to Claude Code with this config folder.",
+            UsageText.LoginProblemText(LoginStatus.NotFound, CodingTool.ClaudeCode));
+        Assert.Equal("Could not read this account's login from auth.json.", UsageText.LoginProblemText(LoginStatus.Unreadable, CodingTool.Codex));
+        Assert.Null(UsageText.LoginProblemText(LoginStatus.Found, CodingTool.Codex));
     }
 
     [Fact]
@@ -95,16 +107,16 @@ public class TrayIconPlanTests
         var service = new UsageService(store, new FakeUsageApi(), clock, home.Path);
         await service.RefreshAsync();
 
-        var single = TrayIconPlan.Entries(store, service, showLogo: false, showResetTime: true, clock);
+        var single = TrayIconPlan.Entries(store, service, showResetTime: true, clock);
         var ring = Assert.IsType<TrayIconEntry.AccountRing>(Assert.Single(single));
         Assert.Equal(60, ring.Remaining);
         Assert.Null(ring.AccountColorHex);
         Assert.Equal("claude\nSession 60% left, resets 8PM\nWeekly ? left", ring.TooltipText);
 
-        store.AddFoundConfigFolders([Path.Combine(home.Path, ".claude-work")]);
+        store.AddFoundConfigFolders([Path.Combine(home.Path, ".claude-work")], CodingTool.ClaudeCode);
         await service.ShownAccountsRefresh;
-        var several = TrayIconPlan.Entries(store, service, showLogo: true, showResetTime: false, clock);
-        Assert.IsType<TrayIconEntry.Logo>(several[0]);
+        var several = TrayIconPlan.Entries(store, service, showResetTime: false, clock);
+        Assert.All(several, entry => Assert.IsType<TrayIconEntry.AccountRing>(entry));
         Assert.Equal([AccountColor.Hexes[0], AccountColor.Hexes[1]], several.OfType<TrayIconEntry.AccountRing>().Select(r => r.AccountColorHex));
         Assert.Equal("claude\nSession 60% left\nWeekly ? left", several.OfType<TrayIconEntry.AccountRing>().First().TooltipText);
     }
@@ -117,13 +129,13 @@ public class TrayIconPlanTests
         store.SetShownInTray(false, store.Accounts[0].ConfigFolderPath);
         var service = new UsageService(store, new FakeUsageApi(), new FixedTimeProvider(Now), home.Path);
 
-        Assert.IsType<TrayIconEntry.Logo>(Assert.Single(TrayIconPlan.Entries(store, service, false, true, new FixedTimeProvider(Now))));
+        Assert.IsType<TrayIconEntry.Logo>(Assert.Single(TrayIconPlan.Entries(store, service, true, new FixedTimeProvider(Now))));
     }
 
     [Fact]
     public void TooltipIsCutToTheWindowsLimit()
     {
-        var account = new ClaudeAccount("C:\\x", new string('a', 200), true, false);
+        var account = new Account("C:\\x", new string('a', 200), true, false);
         var tooltip = TrayIconPlan.TooltipText(account, new AccountUsage(), true, new FixedTimeProvider(Now));
         Assert.Equal(TrayIconPlan.MaximumTooltipLength, tooltip.Length);
         Assert.EndsWith("…", tooltip);
@@ -132,7 +144,7 @@ public class TrayIconPlanTests
     [Fact]
     public void TooltipWithoutDataSaysWhy()
     {
-        var account = new ClaudeAccount("C:\\x", "work", true, false);
+        var account = new Account("C:\\x", "work", true, false);
         Assert.Equal("work\nNo usage data yet", TrayIconPlan.TooltipText(account, new AccountUsage(), true, new FixedTimeProvider(Now)));
         Assert.Equal("work\nLogin problem: open for details",
             TrayIconPlan.TooltipText(account, new AccountUsage { LoginStatus = LoginStatus.TokenExpired }, true, new FixedTimeProvider(Now)));

@@ -45,7 +45,7 @@ public sealed class UsageResponse
                 {
                     continue;
                 }
-                response.Windows[property.Name] = new UsageWindow(utilization, GetString(property.Value, "resets_at"));
+                response.Windows[property.Name] = new UsageWindow(utilization, UsageWindow.ResetDateFrom(GetString(property.Value, "resets_at")));
             }
             return response;
         }

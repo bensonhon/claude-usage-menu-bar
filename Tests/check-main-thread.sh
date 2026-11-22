@@ -8,7 +8,8 @@ swiftc -O -sdk "$(xcrun --show-sdk-path)" \
     "${DIR}/Tests/main.swift" \
     "${DIR}/ClaudeUsageMenuBar/UsageService.swift" \
     "${DIR}/ClaudeUsageMenuBar/UsageModels.swift" \
-    "${DIR}/ClaudeUsageMenuBar/ClaudeAccount.swift" \
+    "${DIR}/ClaudeUsageMenuBar/Account.swift" \
+    "${DIR}/ClaudeUsageMenuBar/CodexUsage.swift" \
     "${DIR}/ClaudeUsageMenuBar/AccountStore.swift" \
     -o "${OUT}" -module-name MainThreadCheck
 "${OUT}"

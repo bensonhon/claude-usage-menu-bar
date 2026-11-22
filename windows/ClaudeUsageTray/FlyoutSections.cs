@@ -65,9 +65,9 @@ public static class SectionTitle
 
 public static class LoginProblemNote
 {
-    public static FrameworkElement? Make(LoginStatus loginStatus, Theme theme, string? accountLabel = null, Brush? dotColor = null)
+    public static FrameworkElement? Make(LoginStatus loginStatus, CodingTool codingTool, Theme theme, string? accountLabel = null, Brush? dotColor = null)
     {
-        if (UsageText.LoginProblemText(loginStatus) is not { } problemText)
+        if (UsageText.LoginProblemText(loginStatus, codingTool) is not { } problemText)
         {
             return null;
         }

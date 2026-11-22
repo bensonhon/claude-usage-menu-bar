@@ -24,11 +24,29 @@ USAGE_BY_TOKEN = {
 }
 
 
+CODEX_USAGE_BY_CHATGPT_ACCOUNT_ID = {
+    "ui-check-codex-account": {
+        "plan_type": "plus",
+        "rate_limit": {
+            "allowed": True,
+            "limit_reached": False,
+            "primary_window": {"used_percent": 41, "limit_window_seconds": 604800, "reset_at": int((datetime.now(timezone.utc) + timedelta(hours=97)).timestamp())},
+            "secondary_window": None,
+        },
+    },
+}
+
+
 class FakeUsageApiHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        token = self.headers.get("Authorization", "").removeprefix("Bearer ")
-        usage = USAGE_BY_TOKEN.get(token)
-        if self.path != "/api/oauth/usage" or usage is None:
+        if self.path == "/api/oauth/usage":
+            token = self.headers.get("Authorization", "").removeprefix("Bearer ")
+            usage = USAGE_BY_TOKEN.get(token)
+        elif self.path == "/backend-api/wham/usage":
+            usage = CODEX_USAGE_BY_CHATGPT_ACCOUNT_ID.get(self.headers.get("chatgpt-account-id", ""))
+        else:
+            usage = None
+        if usage is None:
             self.send_response(401)
             self.end_headers()
             return

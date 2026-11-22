@@ -23,6 +23,7 @@ public sealed record AccountUsage
 
     public UsageWindow? SessionWindow => Windows.GetValueOrDefault("five_hour");
     public UsageWindow? WeeklyWindow => Windows.GetValueOrDefault("seven_day");
+    public UsageWindow? TrayRingWindow => SessionWindow ?? WeeklyWindow;
     public bool HasUsageData => Windows.Count > 0;
 
     public IReadOnlyList<WindowDisplayInfo> SecondaryWindows => Windows
@@ -34,12 +35,15 @@ public sealed record AccountUsage
 
 public interface IUsageApi
 {
-    Task<UsageResponse> FetchUsageAsync(string accessToken);
+    Task<UsageResponse> FetchClaudeUsageAsync(string accessToken);
+
+    Task<CodexUsageResponse> FetchCodexUsageAsync(CodexLoginToken loginToken);
 }
 
 public sealed class UsageApiClient : IUsageApi
 {
-    public static readonly Uri UsageApiUri = new("https://platform.claude.com/api/oauth/usage");
+    public static readonly Uri ClaudeUsageApiUri = new("https://platform.claude.com/api/oauth/usage");
+    public static readonly Uri CodexUsageApiUri = new("https://chatgpt.com/backend-api/wham/usage");
 
     private readonly HttpClient httpClient;
 
@@ -49,14 +53,28 @@ public sealed class UsageApiClient : IUsageApi
         this.httpClient.Timeout = TimeSpan.FromSeconds(15);
     }
 
-    public async Task<UsageResponse> FetchUsageAsync(string accessToken)
+    public async Task<UsageResponse> FetchClaudeUsageAsync(string accessToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, UsageApiUri);
+        using var request = new HttpRequestMessage(HttpMethod.Get, ClaudeUsageApiUri);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         request.Headers.Add("anthropic-beta", "oauth-2025-04-20");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Headers.TryAddWithoutValidation("User-Agent", "claude-code/2.x");
+        return UsageResponse.Decode(await FetchSuccessBodyAsync(request));
+    }
 
+    public async Task<CodexUsageResponse> FetchCodexUsageAsync(CodexLoginToken loginToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, CodexUsageApiUri);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", loginToken.AccessToken);
+        request.Headers.Add("chatgpt-account-id", loginToken.ChatGPTAccountId);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.TryAddWithoutValidation("User-Agent", "codex-cli");
+        return CodexUsageResponse.Decode(await FetchSuccessBodyAsync(request));
+    }
+
+    private async Task<string> FetchSuccessBodyAsync(HttpRequestMessage request)
+    {
         HttpResponseMessage response;
         try
         {
@@ -77,7 +95,7 @@ public sealed class UsageApiClient : IUsageApi
             {
                 throw UsageException.NetworkError($"HTTP {(int)response.StatusCode}: {(body.Length == 0 ? "No body" : body)}");
             }
-            return UsageResponse.Decode(body);
+            return body;
         }
     }
 }
@@ -111,7 +129,7 @@ public sealed class UsageService
         accountStore.AccountsChanged += OnAccountsChanged;
     }
 
-    public AccountUsage UsageFor(ClaudeAccount account) =>
+    public AccountUsage UsageFor(Account account) =>
         usageByConfigFolderPath.GetValueOrDefault(account.ConfigFolderPath) ?? new AccountUsage();
 
     public bool IsEveryShownAccountLoaded => accountStore.ShownAccounts.All(account => UsageFor(account).HasUsageData);
@@ -120,12 +138,20 @@ public sealed class UsageService
 
     public async Task RefreshAsync(bool force = false)
     {
-        var foundConfigFolderPaths = await Task.Run(() => FindConfigFoldersWithCredentialsFile(homeFolderPath));
-        accountStore.AddFoundConfigFolders(foundConfigFolderPaths);
+        var claudeConfigFolderPaths = await Task.Run(() => FindClaudeConfigFoldersWithCredentialsFile(homeFolderPath));
+        var codexConfigFolderPaths = await Task.Run(() => FindCodexConfigFoldersWithAuthFile(homeFolderPath));
+        accountStore.AddFoundConfigFolders(claudeConfigFolderPaths, CodingTool.ClaudeCode);
+        accountStore.AddFoundConfigFolders(codexConfigFolderPaths, CodingTool.Codex);
         await Task.WhenAll(accountStore.Accounts.ToList().Select(account => RefreshAsync(account, force)));
     }
 
-    public static IReadOnlyList<string> FindConfigFoldersWithCredentialsFile(string homeFolderPath)
+    public static IReadOnlyList<string> FindClaudeConfigFoldersWithCredentialsFile(string homeFolderPath) =>
+        FindConfigFolders(homeFolderPath, Account.IsClaudeConfigFolderName, ClaudeCredentialsFile.Exists);
+
+    public static IReadOnlyList<string> FindCodexConfigFoldersWithAuthFile(string homeFolderPath) =>
+        FindConfigFolders(homeFolderPath, Account.IsCodexConfigFolderName, CodexAuthFile.Exists);
+
+    private static IReadOnlyList<string> FindConfigFolders(string homeFolderPath, Func<string, bool> isConfigFolderName, Func<string, bool> hasLogin)
     {
         IEnumerable<string> folderPaths;
         try
@@ -141,41 +167,46 @@ public sealed class UsageService
             return [];
         }
         return folderPaths
-            .Where(folderPath => ClaudeAccount.IsConfigFolderName(Path.GetFileName(folderPath)))
-            .Where(CredentialsFile.Exists)
+            .Where(folderPath => isConfigFolderName(Path.GetFileName(folderPath)))
+            .Where(hasLogin)
             .OrderBy(folderPath => folderPath, StringComparer.Ordinal)
             .ToList();
     }
 
-    private async Task RefreshAsync(ClaudeAccount account, bool force)
+    private async Task RefreshAsync(Account account, bool force)
     {
         var configFolderPath = account.ConfigFolderPath;
 
         if (!account.IsShownInTray)
         {
-            var loginStatus = await Task.Run(() => CredentialsFile.ReadLoginStatus(configFolderPath, timeProvider));
+            var loginStatus = await Task.Run(() => ReadLoginStatus(account));
             SetUsage(configFolderPath, usage => usage with { LoginStatus = loginStatus });
             return;
         }
 
-        var activityTask = Task.Run(() => TokenHistoryParser.ParseLocalTokenHistoryAsync(account.ProjectsFolderPath, timeProvider));
+        var activityTask = account.CodingTool switch
+        {
+            CodingTool.ClaudeCode => Task.Run(() => TokenHistoryParser.ParseLocalTokenHistoryAsync(account.ProjectsFolderPath, timeProvider)),
+            CodingTool.Codex => Task.FromResult(new TokenActivity()),
+            _ => throw new ArgumentOutOfRangeException(nameof(account), account.CodingTool, null),
+        };
 
-        var lastUpdated = usageByConfigFolderPath.GetValueOrDefault(configFolderPath)?.LastUpdated;
-        var skipNetwork = !force && lastUpdated is { } updatedAt && timeProvider.GetUtcNow() - updatedAt < MinimumTimeBetweenFetches;
+        var currentUsage = usageByConfigFolderPath.GetValueOrDefault(configFolderPath);
+        var isAlreadyLoading = currentUsage?.LoadState is UsageLoadState.Loading;
+        var isFetchedRecently = currentUsage?.LastUpdated is { } updatedAt && timeProvider.GetUtcNow() - updatedAt < MinimumTimeBetweenFetches;
+        var skipNetwork = isAlreadyLoading || (!force && isFetchedRecently);
 
         if (!skipNetwork)
         {
             SetUsage(configFolderPath, usage => usage with { LoadState = new UsageLoadState.Loading() });
             try
             {
-                var loginToken = await Task.Run(() => CredentialsFile.ReadLoginToken(configFolderPath, timeProvider));
-                SetUsage(configFolderPath, usage => usage with { LoginStatus = LoginStatus.Found });
-                var response = await usageApi.FetchUsageAsync(loginToken.AccessToken);
+                var fetchedUsage = await FetchUsageAsync(account);
                 SetUsage(configFolderPath, usage => usage with
                 {
-                    Windows = response.Windows,
-                    ExtraUsage = response.ExtraUsage,
-                    PlanName = loginToken.PlanName,
+                    Windows = fetchedUsage.Windows,
+                    ExtraUsage = fetchedUsage.ExtraUsage,
+                    PlanName = fetchedUsage.PlanName,
                     LastUpdated = timeProvider.GetUtcNow(),
                     LoadState = new UsageLoadState.Loaded(),
                 });
@@ -193,6 +224,39 @@ public sealed class UsageService
         var activity = await activityTask;
         SetUsage(configFolderPath, usage => usage with { TokenActivity = activity, TokenActivityLoaded = true });
     }
+
+    private sealed record FetchedUsage(IReadOnlyDictionary<string, UsageWindow> Windows, ExtraUsage? ExtraUsage, string PlanName);
+
+    private async Task<FetchedUsage> FetchUsageAsync(Account account)
+    {
+        var configFolderPath = account.ConfigFolderPath;
+        switch (account.CodingTool)
+        {
+            case CodingTool.ClaudeCode:
+            {
+                var loginToken = await Task.Run(() => ClaudeCredentialsFile.ReadLoginToken(configFolderPath, timeProvider));
+                SetUsage(configFolderPath, usage => usage with { LoginStatus = LoginStatus.Found });
+                var response = await usageApi.FetchClaudeUsageAsync(loginToken.AccessToken);
+                return new FetchedUsage(response.Windows, response.ExtraUsage, loginToken.PlanName);
+            }
+            case CodingTool.Codex:
+            {
+                var loginToken = await Task.Run(() => CodexAuthFile.ReadLoginToken(configFolderPath, timeProvider));
+                SetUsage(configFolderPath, usage => usage with { LoginStatus = LoginStatus.Found });
+                var response = await usageApi.FetchCodexUsageAsync(loginToken);
+                return new FetchedUsage(response.Windows, null, response.PlanName);
+            }
+            default:
+                throw new ArgumentOutOfRangeException(nameof(account), account.CodingTool, null);
+        }
+    }
+
+    private LoginStatus ReadLoginStatus(Account account) => account.CodingTool switch
+    {
+        CodingTool.ClaudeCode => ClaudeCredentialsFile.ReadLoginStatus(account.ConfigFolderPath, timeProvider),
+        CodingTool.Codex => CodexAuthFile.ReadLoginStatus(account.ConfigFolderPath, timeProvider),
+        _ => throw new ArgumentOutOfRangeException(nameof(account), account.CodingTool, null),
+    };
 
     private void SetUsage(string configFolderPath, Func<AccountUsage, AccountUsage> change)
     {

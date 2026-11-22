@@ -2,22 +2,19 @@ using System.Globalization;
 
 namespace ClaudeUsageTray.Core;
 
-public sealed record UsageWindow(double Utilization, string? ResetsAt)
+public sealed record UsageWindow(double Utilization, DateTimeOffset? ResetDate)
 {
     public double Remaining => Math.Max(0, Math.Min(100, 100 - Utilization));
 
-    public DateTimeOffset? ResetDate
+    public static DateTimeOffset? ResetDateFrom(string? isoText)
     {
-        get
+        if (isoText is null)
         {
-            if (ResetsAt is null)
-            {
-                return null;
-            }
-            return DateTimeOffset.TryParse(ResetsAt, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var resetDate)
-                ? resetDate
-                : null;
+            return null;
         }
+        return DateTimeOffset.TryParse(isoText, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var resetDate)
+            ? resetDate
+            : null;
     }
 }
 
